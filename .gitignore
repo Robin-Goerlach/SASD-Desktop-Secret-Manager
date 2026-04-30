@@ -1,0 +1,40 @@
+# Build output
+bin/
+obj/
+out/
+artifacts/
+
+# User-specific files
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# NuGet
+packages/
+*.nupkg
+
+# Test / coverage
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets / local data
+*.svault
+*.svault.bak
+*.lock
+*.tmp
+*.secrets.json
+
+# Logs
+logs/
+*.log
