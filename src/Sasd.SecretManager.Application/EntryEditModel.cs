@@ -44,7 +44,12 @@ public sealed class EntryEditModel
             UserName = entry.UserName,
             Secret = entry.Secret,
             SelectedGroupPath = groupPath ?? string.Empty,
-            TagsText = entry.Tags.Count == 0 ? string.Empty : string.Join(", ", entry.Tags),
+            // Wir normalisieren und sortieren Tags bereits hier so, dass ein
+            // direktes Öffnen und unverändertes Speichern eines Eintrags nicht
+            // fälschlich als fachliche Änderung erkannt wird.
+            TagsText = entry.Tags.Count == 0
+                ? string.Empty
+                : string.Join(", ", entry.Tags.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)),
             Notes = entry.Notes,
             CustomFieldsText = customFieldsText,
         };

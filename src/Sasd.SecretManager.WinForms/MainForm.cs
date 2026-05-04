@@ -83,6 +83,13 @@ public sealed class MainForm : Form
         _entryListView = BuildEntryListView();
         _detailsPanel = new EntryDetailsPanel();
         _searchTextBox = BuildSearchTextBox();
+        _detailsPanel.TagClicked += tag =>
+        {
+            _searchTextBox.Text = tag;
+            _searchTextBox.Focus();
+            _searchTextBox.SelectionStart = _searchTextBox.TextLength;
+            DevLog.WriteLine($"Tag-Filter angewendet: {tag}");
+        };
         _newEntryButton = BuildActionButton("Neuer Eintrag", (_, _) => CreateNewEntry());
         _editEntryButton = BuildActionButton("Bearbeiten", (_, _) => EditSelectedEntry());
         _deleteEntryButton = BuildActionButton("Löschen", (_, _) => DeleteSelectedEntry());
@@ -527,7 +534,7 @@ public sealed class MainForm : Form
         var model = EntryEditModel.CreateNew(selectedGroupPath);
         var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
 
-        using var dialog = new EntryEditDialog("Neuer Eintrag", model, availableGroups);
+        using var dialog = new EntryEditDialog("Neuer Eintrag", model, availableGroups, _currentVault.KnownTags);
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
@@ -551,7 +558,7 @@ public sealed class MainForm : Form
         var model = EntryEditModel.FromEntry(entry, groupPath);
         var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
 
-        using var dialog = new EntryEditDialog($"Eintrag bearbeiten: {entry.Title}", model, availableGroups);
+        using var dialog = new EntryEditDialog($"Eintrag bearbeiten: {entry.Title}", model, availableGroups, _currentVault.KnownTags);
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;

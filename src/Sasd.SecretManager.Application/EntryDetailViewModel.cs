@@ -13,9 +13,14 @@ public sealed class EntryDetailViewModel
     public string UserName { get; init; } = string.Empty;
     public string GroupPath { get; init; } = string.Empty;
     public string Tags { get; init; } = string.Empty;
+    public IReadOnlyList<string> TagItems { get; init; } = Array.Empty<string>();
     public string SecretValue { get; init; } = string.Empty;
     public string SecretPreview { get; init; } = string.Empty;
     public string Notes { get; init; } = string.Empty;
+    public string PrimaryUrl { get; init; } = string.Empty;
+    public string PrimaryHost { get; init; } = string.Empty;
+    public string PrimaryEmail { get; init; } = string.Empty;
+    public string PrimaryPort { get; init; } = string.Empty;
     public IReadOnlyList<EntryDetailFieldViewModel> CustomFields { get; init; } = Array.Empty<EntryDetailFieldViewModel>();
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset ModifiedUtc { get; init; }
@@ -52,14 +57,54 @@ public sealed class EntryDetailViewModel
             UserName = entry.UserName,
             GroupPath = string.IsNullOrWhiteSpace(groupPath) ? "(keine Gruppe)" : groupPath,
             Tags = entry.Tags.Count == 0 ? string.Empty : string.Join(", ", entry.Tags),
+            TagItems = entry.Tags.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase).ToArray(),
             SecretValue = entry.Secret,
             SecretPreview = string.IsNullOrWhiteSpace(entry.Secret) ? "(leer)" : "********",
             Notes = entry.Notes,
+            PrimaryUrl = FindFirstField(entry.CustomFields, CustomFieldKind.Url, "url"),
+            PrimaryHost = FindFirstField(entry.CustomFields, CustomFieldKind.Hostname, "host", "server"),
+            PrimaryEmail = FindEmail(entry),
+            PrimaryPort = FindFirstField(entry.CustomFields, CustomFieldKind.Port, "port"),
             CustomFields = customFields,
             CreatedUtc = entry.CreatedUtc,
             ModifiedUtc = entry.ModifiedUtc,
             CreatedDisplay = entry.CreatedUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss"),
             ModifiedDisplay = entry.ModifiedUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss"),
         };
+    }
+
+    private static string FindEmail(SecretEntry entry)
+    {
+        var fieldMail = FindFirstField(entry.CustomFields, CustomFieldKind.Email, "mail", "email");
+        if (!string.IsNullOrWhiteSpace(fieldMail))
+        {
+            return fieldMail;
+        }
+
+        return entry.UserName.Contains('@') ? entry.UserName : string.Empty;
+    }
+
+    private static string FindFirstField(IReadOnlyList<CustomField> fields, CustomFieldKind expectedKind, params string[] nameHints)
+    {
+        var byKind = fields.FirstOrDefault(field => !field.IsSecret && field.Kind == expectedKind && !string.IsNullOrWhiteSpace(field.Value));
+        if (byKind is not null)
+        {
+            return byKind.Value;
+        }
+
+        if (nameHints.Length > 0)
+        {
+            var byName = fields.FirstOrDefault(field =>
+                !field.IsSecret &&
+                !string.IsNullOrWhiteSpace(field.Value) &&
+                nameHints.Any(hint => field.Name.Contains(hint, StringComparison.OrdinalIgnoreCase)));
+
+            if (byName is not null)
+            {
+                return byName.Value;
+            }
+        }
+
+        return string.Empty;
     }
 }

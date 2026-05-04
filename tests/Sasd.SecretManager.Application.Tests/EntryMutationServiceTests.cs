@@ -11,6 +11,7 @@ public sealed class EntryMutationServiceTests
     {
         var vault = new DemoVaultFactory().CreateDemoVault();
         var service = new EntryMutationService();
+
         var model = new EntryEditModel
         {
             Title = "Neuer API Zugang",
@@ -40,6 +41,7 @@ public sealed class EntryMutationServiceTests
         var service = new EntryMutationService();
         var entry = vault.Entries[0];
         var oldModified = entry.ModifiedUtc;
+
         var model = EntryEditModel.FromEntry(entry, "SASD-GmbH/IONOS");
         model.TagsText = "SASD, IONOS, Deployment";
         model.Title = "IONOS Webspace FTP Bearbeitet";
@@ -60,7 +62,9 @@ public sealed class EntryMutationServiceTests
         var service = new EntryMutationService();
         var entry = vault.Entries[0];
         var oldModified = entry.ModifiedUtc;
-        var model = EntryEditModel.FromEntry(entry, "SASD-GmbH/IONOS");
+        var currentGroupPath = vault.Groups.Single(group => group.Id == entry.GroupId).Path;
+
+        var model = EntryEditModel.FromEntry(entry, currentGroupPath);
 
         var changed = service.UpdateEntry(vault, entry, model);
 

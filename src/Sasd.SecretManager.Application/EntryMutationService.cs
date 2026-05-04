@@ -121,7 +121,9 @@ public sealed class EntryMutationService
 
         return tagsText
             .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
@@ -246,9 +248,22 @@ public sealed class EntryMutationService
             return false;
         }
 
-        for (var index = 0; index < left.Count; index++)
+        // Tags werden bei der Eingabe normalisiert und alphabetisch sortiert.
+        // Für den Vergleich eines unverändert geöffneten und wieder gespeicherten
+        // Eintrags müssen wir daher auch die bereits vorhandenen Tags in dieselbe
+        // Vergleichsform bringen, statt ihre ursprüngliche Reihenfolge als fachlich
+        // relevant zu behandeln.
+        var normalizedLeft = left
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var normalizedRight = right
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        for (var index = 0; index < normalizedLeft.Length; index++)
         {
-            if (!string.Equals(left[index], right[index], StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(normalizedLeft[index], normalizedRight[index], StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
