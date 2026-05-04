@@ -6,7 +6,8 @@ namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Erste Hauptoberfläche der Anwendung.
-/// Die Form bildet bewusst nur ein ruhiges Startgerüst ab.
+/// Der Schwerpunkt dieses Stands liegt darauf,
+/// die UI-Shell an ein echtes In-Memory-Modell anzubinden.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -14,6 +15,14 @@ public sealed class MainForm : Form
     private readonly ListView _entryListView;
     private readonly PropertyGrid _detailsPropertyGrid;
     private readonly ToolStripStatusLabel _statusLabel;
+    private readonly TextBox _searchTextBox;
+
+    private readonly VaultSummaryService _summaryService = new();
+    private readonly VaultQueryService _queryService = new();
+
+    private SecretVault _currentVault = new();
+    private int _sortColumn;
+    private bool _sortAscending = true;
 
     /// <summary>
     /// Initialisiert die Hauptform.
@@ -26,7 +35,6 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1100, 720);
 
-        // Eine ruhige dunkle Basis passt gut zur bisher gewünschten visuellen Richtung.
         BackColor = Color.FromArgb(25, 30, 38);
         ForeColor = Color.Gainsboro;
 
@@ -40,6 +48,7 @@ public sealed class MainForm : Form
         _groupTreeView = BuildGroupTreeView();
         _entryListView = BuildEntryListView();
         _detailsPropertyGrid = BuildDetailsGrid();
+        _searchTextBox = BuildSearchTextBox();
 
         var horizontalSplit = new SplitContainer
         {
@@ -67,8 +76,7 @@ public sealed class MainForm : Form
         Controls.Add(menuStrip);
         MainMenuStrip = menuStrip;
 
-        SeedDemoData();
-        ApplyVaultSummary();
+        LoadDemoVault();
     }
 
     private MenuStrip BuildMenuStrip()
@@ -120,13 +128,9 @@ public sealed class MainForm : Form
 
         treeView.AfterSelect += (_, e) =>
         {
-            // Der Node sollte bei AfterSelect in der Praxis vorhanden sein.
-            // Dennoch gehen wir hier null-sicher vor, um Warnungen zu vermeiden
-            // und die Absicht im Code klar zu machen.
-            var selectedText = e.Node?.Text ?? "<kein Knoten>";
-
-            _statusLabel.Text = $"Ausgewählt: {selectedText}";
-            DevLog.WriteLine($"TreeView-Auswahl geändert: {selectedText}");
+            var selectedPath = e.Node?.Tag as string ?? e.Node?.Text ?? string.Empty;
+            DevLog.WriteLine($"TreeView-Auswahl geändert: {selectedPath}");
+            ApplyFiltersAndRefresh();
         };
 
         return treeView;
@@ -155,12 +159,43 @@ public sealed class MainForm : Form
         {
             if (listView.SelectedItems.Count == 0)
             {
+                _detailsPropertyGrid.SelectedObject = null;
                 return;
             }
 
-            _detailsPropertyGrid.SelectedObject = listView.SelectedItems[0].Tag;
+            var entry = (SecretEntry)listView.SelectedItems[0].Tag!;
+            ShowEntryDetails(entry);
             _statusLabel.Text = $"Eintrag ausgewählt: {listView.SelectedItems[0].Text}";
             DevLog.WriteLine($"ListView-Auswahl geändert: {listView.SelectedItems[0].Text}");
+        };
+
+        listView.ColumnClick += (_, e) =>
+        {
+            if (_sortColumn == e.Column)
+            {
+                _sortAscending = !_sortAscending;
+            }
+            else
+            {
+                _sortColumn = e.Column;
+                _sortAscending = true;
+            }
+
+            DevLog.WriteLine($"Sortierung geändert: Spalte {_sortColumn}, aufsteigend={_sortAscending}");
+            ApplyFiltersAndRefresh();
+        };
+
+        listView.DoubleClick += (_, _) =>
+        {
+            if (listView.SelectedItems.Count == 0)
+            {
+                return;
+            }
+
+            var entry = (SecretEntry)listView.SelectedItems[0].Tag!;
+            var details = CreateDetailViewModel(entry);
+            using var dialog = new EntryDetailsDialog(details);
+            dialog.ShowDialog(this);
         };
 
         return listView;
@@ -177,6 +212,29 @@ public sealed class MainForm : Form
         ViewForeColor = Color.Gainsboro,
     };
 
+    private TextBox BuildSearchTextBox()
+    {
+        var searchBox = new TextBox
+        {
+            Dock = DockStyle.Top,
+            PlaceholderText = "Suche nach Titel, Tags, Gruppen oder Zusatzfeldern …",
+            Margin = new Padding(0, 0, 0, 12),
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = Color.FromArgb(24, 28, 36),
+            ForeColor = Color.Gainsboro,
+        };
+
+        searchBox.TextChanged += (_, _) =>
+        {
+            DevLog.WriteLine(string.IsNullOrWhiteSpace(searchBox.Text)
+                ? "Suche zurückgesetzt."
+                : $"Suche geändert: {searchBox.Text}");
+            ApplyFiltersAndRefresh();
+        };
+
+        return searchBox;
+    }
+
     private Control BuildEntryArea()
     {
         var container = new TableLayoutPanel
@@ -190,24 +248,7 @@ public sealed class MainForm : Form
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var searchBox = new TextBox
-        {
-            Dock = DockStyle.Top,
-            PlaceholderText = "Suche nach Titel, Tags, Gruppen oder Zusatzfeldern …",
-            Margin = new Padding(0, 0, 0, 12),
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = Color.FromArgb(24, 28, 36),
-            ForeColor = Color.Gainsboro,
-        };
-
-        searchBox.TextChanged += (_, _) =>
-        {
-            _statusLabel.Text = string.IsNullOrWhiteSpace(searchBox.Text)
-                ? "Bereit. Erste UI-Shell geladen."
-                : $"Suche: {searchBox.Text}";
-        };
-
-        container.Controls.Add(searchBox, 0, 0);
+        container.Controls.Add(_searchTextBox, 0, 0);
         container.Controls.Add(_entryListView, 0, 1);
         return container;
     }
@@ -245,70 +286,132 @@ public sealed class MainForm : Form
         return outerPanel;
     }
 
-    private void SeedDemoData()
+    private void LoadDemoVault()
     {
-        var root = new TreeNode("SASD-GmbH");
-        root.Nodes.Add("IONOS");
-        root.Nodes.Add("GitHub");
-        root.Nodes.Add("Mail");
-        root.Nodes.Add("Datenbanken");
+        var factory = new DemoVaultFactory();
+        _currentVault = factory.CreateDemoVault();
 
-        var privateRoot = new TreeNode("Privat");
-        privateRoot.Nodes.Add("Allgemein");
-        privateRoot.Nodes.Add("Finanzen");
+        BuildGroupNodesFromVault();
+        ApplyVaultSummary();
 
-        _groupTreeView.Nodes.Add(root);
-        _groupTreeView.Nodes.Add(privateRoot);
-        _groupTreeView.ExpandAll();
-
-        AddEntry(new SecretEntry
+        if (_groupTreeView.Nodes.Count > 0)
         {
-            Title = "IONOS Webspace FTP",
-            EntryType = EntryType.Ftp,
-            UserName = "deploy-user",
-            Secret = "********",
-            Notes = "Früher Demo-Eintrag für die UI-Shell.",
-        }, "SASD, IONOS, Deployment");
-
-        AddEntry(new SecretEntry
+            _groupTreeView.SelectedNode = _groupTreeView.Nodes[0];
+        }
+        else
         {
-            Title = "SASD CMS Produktionsdatenbank",
-            EntryType = EntryType.Database,
-            UserName = "cms_prod",
-            Secret = "********",
-            Notes = "Später mit Host, Port und DB-Name als Zusatzfelder.",
-        }, "SASD, IONOS, MySQL, Produktion");
-
-        AddEntry(new SecretEntry
-        {
-            Title = "GitHub Organisation",
-            EntryType = EntryType.Login,
-            UserName = "Robin-Goerlach",
-            Secret = "********",
-            Notes = "Persönliches Entwicklungs-Repository für frühe Stände.",
-        }, "GitHub, SASD");
+            ApplyFiltersAndRefresh();
+        }
     }
 
-    private void AddEntry(SecretEntry entry, string tags)
+    private void BuildGroupNodesFromVault()
     {
-        var item = new ListViewItem(entry.Title);
-        item.SubItems.Add(entry.EntryType.ToString());
-        item.SubItems.Add(entry.UserName);
-        item.SubItems.Add(tags);
-        item.Tag = entry;
-        _entryListView.Items.Add(item);
+        _groupTreeView.BeginUpdate();
+        _groupTreeView.Nodes.Clear();
+
+        // Wichtig: ParentGroupId ist nullable. Deshalb verwenden wir hier bewusst
+        // ein Lookup anstelle eines Dictionary<Guid?, ...>, damit die Root-Gruppen
+        // mit dem Schlüssel "null" sauber behandelt werden können.
+        var groupsByParent = _currentVault.Groups
+            .ToLookup(group => group.ParentGroupId);
+
+        foreach (var rootGroup in groupsByParent[null].OrderBy(group => group.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            _groupTreeView.Nodes.Add(BuildGroupNodeRecursive(rootGroup, groupsByParent));
+        }
+
+        _groupTreeView.ExpandAll();
+        _groupTreeView.EndUpdate();
+    }
+
+    private TreeNode BuildGroupNodeRecursive(EntryGroup group, ILookup<Guid?, EntryGroup> groupsByParent)
+    {
+        var node = new TreeNode(group.Name)
+        {
+            Tag = group.Path,
+        };
+
+        foreach (var childGroup in groupsByParent[group.Id].OrderBy(group => group.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            node.Nodes.Add(BuildGroupNodeRecursive(childGroup, groupsByParent));
+        }
+
+        return node;
     }
 
     private void ApplyVaultSummary()
     {
-        var vault = new SecretVault { Name = "UI-Demo-Tresor" };
-        vault.Groups.Add(new EntryGroup { Name = "SASD-GmbH", Path = "SASD-GmbH" });
-        vault.Groups.Add(new EntryGroup { Name = "Privat", Path = "Privat" });
-        vault.KnownTags.AddRange(new[] { "SASD", "IONOS", "GitHub" });
-        vault.Entries.AddRange(_entryListView.Items.Cast<ListViewItem>().Select(item => (SecretEntry)item.Tag!));
+        _statusLabel.Text = _summaryService.CreateSummary(_currentVault);
+    }
 
-        var summaryService = new VaultSummaryService();
-        _statusLabel.Text = summaryService.CreateSummary(vault);
+    private void ApplyFiltersAndRefresh()
+    {
+        var selectedGroupPath = _groupTreeView.SelectedNode?.Tag as string;
+        var searchText = _searchTextBox.Text;
+
+        var selectedEntryId = _entryListView.SelectedItems.Count > 0
+            ? ((SecretEntry)_entryListView.SelectedItems[0].Tag!).Id
+            : Guid.Empty;
+
+        var visibleEntries = _queryService.GetVisibleEntries(_currentVault, selectedGroupPath, searchText, _sortColumn, _sortAscending);
+        RefreshEntryList(visibleEntries, selectedEntryId);
+
+        var groupLabel = string.IsNullOrWhiteSpace(selectedGroupPath) ? "Alle Gruppen" : selectedGroupPath;
+        var searchLabel = string.IsNullOrWhiteSpace(searchText) ? string.Empty : $" · Suche: {searchText}";
+        var sortDirection = _sortAscending ? "aufsteigend" : "absteigend";
+        _statusLabel.Text = $"{groupLabel} · {visibleEntries.Count} Einträge · Sortierung Spalte {_sortColumn + 1} ({sortDirection}){searchLabel}";
+    }
+
+    private void RefreshEntryList(IReadOnlyList<SecretEntry> entries, Guid selectedEntryId)
+    {
+        _entryListView.BeginUpdate();
+        _entryListView.Items.Clear();
+
+        ListViewItem? itemToSelect = null;
+
+        foreach (var entry in entries)
+        {
+            var item = new ListViewItem(entry.Title);
+            item.SubItems.Add(entry.EntryType.ToString());
+            item.SubItems.Add(entry.UserName);
+            item.SubItems.Add(entry.Tags.Count == 0 ? string.Empty : string.Join(", ", entry.Tags));
+            item.Tag = entry;
+
+            _entryListView.Items.Add(item);
+
+            if (entry.Id == selectedEntryId)
+            {
+                itemToSelect = item;
+            }
+        }
+
+        _entryListView.EndUpdate();
+
+        if (itemToSelect is not null)
+        {
+            itemToSelect.Selected = true;
+            itemToSelect.EnsureVisible();
+        }
+        else if (_entryListView.Items.Count > 0)
+        {
+            _entryListView.Items[0].Selected = true;
+        }
+        else
+        {
+            _detailsPropertyGrid.SelectedObject = null;
+        }
+    }
+
+    private void ShowEntryDetails(SecretEntry entry)
+    {
+        var details = CreateDetailViewModel(entry);
+        _detailsPropertyGrid.SelectedObject = details;
+    }
+
+    private EntryDetailViewModel CreateDetailViewModel(SecretEntry entry)
+    {
+        var groupPath = _queryService.ResolveGroupPath(_currentVault, entry);
+        return EntryDetailViewModel.FromEntry(entry, groupPath);
     }
 
     private void ShowInfo(string message)
