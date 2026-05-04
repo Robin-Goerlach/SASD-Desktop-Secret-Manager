@@ -7,21 +7,16 @@ namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Hauptoberfläche der Anwendung.
-/// Milestone 8 verbessert die Bedienung im Gruppenbaum durch einen sichtbaren
-/// Tresor-Wurzelknoten, klarere Haupt-/Untergruppen-Workflows und Kontextmenüs.
+/// Aktueller Stand: Root-aware Organisation, Kontextmenüs und Drag & Drop
+/// für Einträge und Gruppen im TreeView.
 /// </summary>
 public sealed class MainForm : Form
 {
-    private const string RootNodeTag = "__VAULT_ROOT__";
-
     private readonly TreeView _groupTreeView;
     private readonly ListView _entryListView;
     private readonly EntryDetailsPanel _detailsPanel;
     private readonly ToolStripStatusLabel _statusLabel;
     private readonly TextBox _searchTextBox;
-
-    // Die Buttons bleiben intern erhalten, damit wir die vorhandene Enable/Disable-Logik
-    // nicht zerreißen. Sichtbar nutzen wir in Milestone 8 aber primär Menü + Kontextmenüs.
     private readonly Button _newEntryButton;
     private readonly Button _editEntryButton;
     private readonly Button _deleteEntryButton;
@@ -29,19 +24,17 @@ public sealed class MainForm : Form
     private readonly Button _newGroupButton;
     private readonly Button _renameGroupButton;
     private readonly Button _deleteGroupButton;
-
     private readonly ToolStripMenuItem _saveVaultMenuItem;
     private readonly ToolStripMenuItem _saveVaultAsMenuItem;
     private readonly ToolStripMenuItem _newEntryMenuItem;
     private readonly ToolStripMenuItem _editEntryMenuItem;
     private readonly ToolStripMenuItem _deleteEntryMenuItem;
     private readonly ToolStripMenuItem _moveEntryMenuItem;
-    private readonly ToolStripMenuItem _newMainGroupMenuItem;
+    private readonly ToolStripMenuItem _newGroupMenuItem;
     private readonly ToolStripMenuItem _newSubGroupMenuItem;
     private readonly ToolStripMenuItem _renameGroupMenuItem;
     private readonly ToolStripMenuItem _deleteGroupMenuItem;
-
-    private readonly ContextMenuStrip _treeContextMenu;
+    private readonly ContextMenuStrip _groupContextMenu;
     private readonly ContextMenuStrip _entryContextMenu;
 
     private readonly VaultSummaryService _summaryService = new();
@@ -79,38 +72,28 @@ public sealed class MainForm : Form
         _newEntryMenuItem = new ToolStripMenuItem("Neuer Eintrag", null, (_, _) => CreateNewEntry());
         _editEntryMenuItem = new ToolStripMenuItem("Eintrag bearbeiten", null, (_, _) => EditSelectedEntry());
         _deleteEntryMenuItem = new ToolStripMenuItem("Eintrag löschen", null, (_, _) => DeleteSelectedEntry());
-        _moveEntryMenuItem = new ToolStripMenuItem("In aktuell ausgewählte Gruppe verschieben", null, (_, _) => MoveSelectedEntryToCurrentGroup());
-        _newMainGroupMenuItem = new ToolStripMenuItem("Neue Hauptgruppe", null, (_, _) => CreateMainGroup());
+        _moveEntryMenuItem = new ToolStripMenuItem("In aktuelle Gruppe verschieben", null, (_, _) => MoveSelectedEntryToCurrentGroup());
+        _newGroupMenuItem = new ToolStripMenuItem("Neue Hauptgruppe", null, (_, _) => CreateGroup(createAsRoot: true));
         _newSubGroupMenuItem = new ToolStripMenuItem("Neue Untergruppe", null, (_, _) => CreateSubGroup());
         _renameGroupMenuItem = new ToolStripMenuItem("Gruppe umbenennen", null, (_, _) => RenameSelectedGroup());
         _deleteGroupMenuItem = new ToolStripMenuItem("Gruppe löschen", null, (_, _) => DeleteSelectedGroup());
-
-        _treeContextMenu = BuildTreeContextMenu();
+        _groupContextMenu = BuildGroupContextMenu();
         _entryContextMenu = BuildEntryContextMenu();
 
         var menuStrip = BuildMenuStrip();
         var statusStrip = BuildStatusStrip();
-        _statusLabel = new ToolStripStatusLabel("Bereit. Bedienlogik für Gruppen und Kontextmenüs geladen.");
+        _statusLabel = new ToolStripStatusLabel("Bereit. Organisationsfunktionen geladen.");
         statusStrip.Items.Add(_statusLabel);
 
         _groupTreeView = BuildGroupTreeView();
         _entryListView = BuildEntryListView();
         _detailsPanel = new EntryDetailsPanel();
         _searchTextBox = BuildSearchTextBox();
-
-        _detailsPanel.TagClicked += tag =>
-        {
-            _searchTextBox.Text = tag;
-            _searchTextBox.Focus();
-            _searchTextBox.SelectionStart = _searchTextBox.TextLength;
-            DevLog.WriteLine($"Tag-Filter angewendet: {tag}");
-        };
-
         _newEntryButton = BuildActionButton("Neuer Eintrag", (_, _) => CreateNewEntry());
         _editEntryButton = BuildActionButton("Bearbeiten", (_, _) => EditSelectedEntry());
         _deleteEntryButton = BuildActionButton("Löschen", (_, _) => DeleteSelectedEntry());
         _moveEntryButton = BuildActionButton("In Gruppe verschieben", (_, _) => MoveSelectedEntryToCurrentGroup());
-        _newGroupButton = BuildActionButton("Neue Gruppe", (_, _) => CreateMainGroup());
+        _newGroupButton = BuildActionButton("Neue Gruppe", (_, _) => CreateGroup());
         _renameGroupButton = BuildActionButton("Umbenennen", (_, _) => RenameSelectedGroup());
         _deleteGroupButton = BuildActionButton("Löschen", (_, _) => DeleteSelectedGroup());
 
@@ -130,7 +113,7 @@ public sealed class MainForm : Form
             FixedPanel = FixedPanel.Panel2,
         };
 
-        horizontalSplit.Panel1.Controls.Add(WrapInPanel("Tresor und Gruppen", BuildGroupArea()));
+        horizontalSplit.Panel1.Controls.Add(WrapInPanel("Tresore, Gruppen & Tags", BuildGroupArea()));
         horizontalSplit.Panel2.Controls.Add(rightSplit);
         rightSplit.Panel1.Controls.Add(WrapInPanel("Einträge", BuildEntryArea()));
         rightSplit.Panel2.Controls.Add(WrapInPanel("Details", _detailsPanel));
@@ -169,7 +152,7 @@ public sealed class MainForm : Form
         entryMenu.DropDownItems.Add(_moveEntryMenuItem);
 
         var groupMenu = new ToolStripMenuItem("Gruppe");
-        groupMenu.DropDownItems.Add(_newMainGroupMenuItem);
+        groupMenu.DropDownItems.Add(_newGroupMenuItem);
         groupMenu.DropDownItems.Add(_newSubGroupMenuItem);
         groupMenu.DropDownItems.Add(new ToolStripSeparator());
         groupMenu.DropDownItems.Add(_renameGroupMenuItem);
@@ -197,28 +180,6 @@ public sealed class MainForm : Form
         ForeColor = Color.Gainsboro,
     };
 
-    private ContextMenuStrip BuildTreeContextMenu()
-    {
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Neue Hauptgruppe", null, (_, _) => CreateMainGroup());
-        menu.Items.Add("Neue Untergruppe", null, (_, _) => CreateSubGroup());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Umbenennen", null, (_, _) => RenameSelectedGroup());
-        menu.Items.Add("Löschen", null, (_, _) => DeleteSelectedGroup());
-        return menu;
-    }
-
-    private ContextMenuStrip BuildEntryContextMenu()
-    {
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Neuer Eintrag", null, (_, _) => CreateNewEntry());
-        menu.Items.Add("Bearbeiten", null, (_, _) => EditSelectedEntry());
-        menu.Items.Add("Löschen", null, (_, _) => DeleteSelectedEntry());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("In aktuell ausgewählte Gruppe verschieben", null, (_, _) => MoveSelectedEntryToCurrentGroup());
-        return menu;
-    }
-
     private TreeView BuildGroupTreeView()
     {
         var treeView = new TreeView
@@ -228,41 +189,34 @@ public sealed class MainForm : Form
             ForeColor = Color.Gainsboro,
             BorderStyle = BorderStyle.None,
             HideSelection = false,
-            ContextMenuStrip = _treeContextMenu,
+            AllowDrop = true,
+            ContextMenuStrip = _groupContextMenu,
         };
 
         treeView.AfterSelect += (_, e) =>
         {
-            var selectedPath = IsRootNode(e.Node)
-                ? _currentVault.Name
-                : e.Node?.Tag as string ?? e.Node?.Text ?? string.Empty;
-
+            var selectedPath = e.Node?.Tag as string ?? e.Node?.Text ?? string.Empty;
             DevLog.WriteLine($"TreeView-Auswahl geändert: {selectedPath}");
             ApplyFiltersAndRefresh();
         };
 
         treeView.NodeMouseClick += (_, e) =>
         {
-            treeView.SelectedNode = e.Node;
             if (e.Button == MouseButtons.Right)
             {
-                ConfigureTreeContextMenuForSelection(e.Node);
-                _treeContextMenu.Show(treeView, e.Location);
+                treeView.SelectedNode = e.Node;
             }
         };
 
-        treeView.MouseUp += (_, e) =>
+        treeView.ItemDrag += (_, e) => BeginGroupDrag(e.Item);
+        treeView.DragEnter += (_, e) => HandleTreeDragEnter(e);
+        treeView.DragOver += (_, e) => HandleTreeDragOver(treeView, e);
+        treeView.DragDrop += (_, e) => HandleTreeDragDrop(treeView, e);
+        treeView.DragLeave += (_, _) =>
         {
-            if (e.Button != MouseButtons.Right || treeView.GetNodeAt(e.Location) is not null)
+            if (treeView.SelectedNode is not null && treeView.SelectedNode.Tag is null)
             {
-                return;
-            }
-
-            if (treeView.Nodes.Count > 0)
-            {
-                treeView.SelectedNode = treeView.Nodes[0];
-                ConfigureTreeContextMenuForSelection(treeView.SelectedNode);
-                _treeContextMenu.Show(treeView, e.Location);
+                _statusLabel.Text = "Eintrag auf eine Gruppe ziehen, um ihn zu verschieben.";
             }
         };
 
@@ -322,7 +276,8 @@ public sealed class MainForm : Form
         };
 
         listView.DoubleClick += (_, _) => EditSelectedEntry();
-        listView.MouseUp += (_, e) =>
+        listView.ItemDrag += (_, e) => BeginEntryDrag(e.Item);
+        listView.MouseDown += (_, e) =>
         {
             if (e.Button != MouseButtons.Right)
             {
@@ -333,10 +288,8 @@ public sealed class MainForm : Form
             if (item is not null)
             {
                 item.Selected = true;
+                item.Focused = true;
             }
-
-            ConfigureEntryContextMenuForSelection();
-            _entryContextMenu.Show(listView, e.Location);
         };
 
         return listView;
@@ -383,13 +336,12 @@ public sealed class MainForm : Form
 
     private Control BuildGroupArea()
     {
-        var helperLabel = new Label
+        var hintLabel = new Label
         {
             Dock = DockStyle.Top,
-            Height = 42,
-            Text = "Rechtsklick auf den Tresor: Hauptgruppe anlegen.\r\nRechtsklick auf eine Gruppe: Untergruppe, Umbenennen, Löschen.",
+            Height = 44,
             ForeColor = Color.Silver,
-            BackColor = BackColor,
+            Text = "Tipp: Rechtsklick auf den Tresor oder auf eine Gruppe für Aktionen. Einträge und Gruppen lassen sich per Drag & Drop neu anordnen.",
             Padding = new Padding(0, 0, 0, 8),
         };
 
@@ -402,20 +354,31 @@ public sealed class MainForm : Form
         };
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        container.Controls.Add(helperLabel, 0, 0);
+        container.Controls.Add(hintLabel, 0, 0);
         container.Controls.Add(_groupTreeView, 0, 1);
         return container;
     }
 
     private Control BuildEntryArea()
     {
-        var helperLabel = new Label
+        var actionsPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = BackColor,
+        };
+        actionsPanel.Controls.Add(_newEntryButton);
+        actionsPanel.Controls.Add(_editEntryButton);
+
+        var hintLabel = new Label
         {
             Dock = DockStyle.Top,
             Height = 24,
-            Text = "Rechtsklick in der Liste: Neu, Bearbeiten, Löschen oder in Gruppe verschieben.",
             ForeColor = Color.Silver,
-            BackColor = BackColor,
+            Text = "Weitere Aktionen findest du über die Menüleiste oder per Rechtsklick. Einträge lassen sich per Drag & Drop auf Gruppen verschieben.",
             Padding = new Padding(0, 0, 0, 6),
         };
 
@@ -423,17 +386,19 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 4,
             BackColor = BackColor,
         };
 
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         container.Controls.Add(_searchTextBox, 0, 0);
-        container.Controls.Add(helperLabel, 0, 1);
-        container.Controls.Add(_entryListView, 0, 2);
+        container.Controls.Add(actionsPanel, 0, 1);
+        container.Controls.Add(hintLabel, 0, 2);
+        container.Controls.Add(_entryListView, 0, 3);
         return container;
     }
 
@@ -487,7 +452,15 @@ public sealed class MainForm : Form
         ApplyVaultSummary();
         UpdateWindowTitle();
         UpdateUiState();
-        SelectGroupPath(null);
+
+        if (_groupTreeView.Nodes.Count > 0)
+        {
+            _groupTreeView.SelectedNode = _groupTreeView.Nodes[0];
+        }
+        else
+        {
+            ApplyFiltersAndRefresh();
+        }
     }
 
     private void BuildGroupNodesFromVault()
@@ -497,8 +470,7 @@ public sealed class MainForm : Form
 
         var rootNode = new TreeNode(string.IsNullOrWhiteSpace(_currentVault.Name) ? "Tresor" : _currentVault.Name)
         {
-            Tag = RootNodeTag,
-            NodeFont = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            Tag = null,
         };
 
         var groupsByParent = _currentVault.Groups.ToLookup(group => group.ParentGroupId);
@@ -528,6 +500,63 @@ public sealed class MainForm : Form
         return node;
     }
 
+    private ContextMenuStrip BuildGroupContextMenu()
+    {
+        var contextMenu = new ContextMenuStrip();
+
+        var newRootGroupItem = new ToolStripMenuItem("Neue Hauptgruppe", null, (_, _) => CreateGroup(createAsRoot: true));
+        var newSubGroupItem = new ToolStripMenuItem("Neue Untergruppe", null, (_, _) => CreateSubGroup());
+        var renameGroupItem = new ToolStripMenuItem("Umbenennen", null, (_, _) => RenameSelectedGroup());
+        var deleteGroupItem = new ToolStripMenuItem("Löschen", null, (_, _) => DeleteSelectedGroup());
+
+        contextMenu.Items.Add(newRootGroupItem);
+        contextMenu.Items.Add(newSubGroupItem);
+        contextMenu.Items.Add(new ToolStripSeparator());
+        contextMenu.Items.Add(renameGroupItem);
+        contextMenu.Items.Add(deleteGroupItem);
+
+        contextMenu.Opening += (_, e) =>
+        {
+            var hasVault = _currentVault is not null;
+            var hasSelectedGroup = !string.IsNullOrWhiteSpace(GetSelectedGroupPath());
+            newRootGroupItem.Enabled = hasVault;
+            newSubGroupItem.Enabled = hasSelectedGroup;
+            renameGroupItem.Enabled = hasSelectedGroup;
+            deleteGroupItem.Enabled = hasSelectedGroup;
+            e.Cancel = !hasVault;
+        };
+
+        return contextMenu;
+    }
+
+    private ContextMenuStrip BuildEntryContextMenu()
+    {
+        var contextMenu = new ContextMenuStrip();
+
+        var newEntryItem = new ToolStripMenuItem("Neuer Eintrag", null, (_, _) => CreateNewEntry());
+        var editEntryItem = new ToolStripMenuItem("Bearbeiten", null, (_, _) => EditSelectedEntry());
+        var deleteEntryItem = new ToolStripMenuItem("Löschen", null, (_, _) => DeleteSelectedEntry());
+        var moveEntryItem = new ToolStripMenuItem("In aktuelle Gruppe verschieben", null, (_, _) => MoveSelectedEntryToCurrentGroup());
+
+        contextMenu.Items.Add(newEntryItem);
+        contextMenu.Items.Add(editEntryItem);
+        contextMenu.Items.Add(deleteEntryItem);
+        contextMenu.Items.Add(new ToolStripSeparator());
+        contextMenu.Items.Add(moveEntryItem);
+
+        contextMenu.Opening += (_, e) =>
+        {
+            var hasSelectedEntry = _entryListView.SelectedItems.Count > 0;
+            var hasSelectedGroup = !string.IsNullOrWhiteSpace(GetSelectedGroupPath());
+            newEntryItem.Enabled = _currentVault is not null;
+            editEntryItem.Enabled = hasSelectedEntry;
+            deleteEntryItem.Enabled = hasSelectedEntry;
+            moveEntryItem.Enabled = hasSelectedEntry && hasSelectedGroup;
+        };
+
+        return contextMenu;
+    }
+
     private void ApplyVaultSummary()
     {
         _statusLabel.Text = _summaryService.CreateSummary(_currentVault);
@@ -544,9 +573,7 @@ public sealed class MainForm : Form
         var visibleEntries = _queryService.GetVisibleEntries(_currentVault, selectedGroupPath, searchText, _sortColumn, _sortAscending);
         RefreshEntryList(visibleEntries, selectedEntryId);
 
-        var groupLabel = string.IsNullOrWhiteSpace(selectedGroupPath)
-            ? $"Tresor: {_currentVault.Name}"
-            : selectedGroupPath;
+        var groupLabel = string.IsNullOrWhiteSpace(selectedGroupPath) ? "Alle Gruppen" : selectedGroupPath;
         var searchLabel = string.IsNullOrWhiteSpace(searchText) ? string.Empty : $" · Suche: {searchText}";
         var sortDirection = _sortAscending ? "aufsteigend" : "absteigend";
         var dirtyLabel = _isDirty ? " · ungespeichert" : string.Empty;
@@ -609,6 +636,201 @@ public sealed class MainForm : Form
     {
         var groupPath = _queryService.ResolveGroupPath(_currentVault, entry);
         return EntryDetailViewModel.FromEntry(entry, groupPath);
+    }
+
+    private const string GroupPathDataFormat = "Sasd.SecretManager.GroupPath";
+
+    private void BeginEntryDrag(object? draggedItem)
+    {
+        if (draggedItem is not ListViewItem item || item.Tag is not SecretEntry entry)
+        {
+            return;
+        }
+
+        _statusLabel.Text = $"Eintrag wird verschoben: {entry.Title}";
+        DevLog.WriteLine($"Drag & Drop gestartet: {entry.Title}");
+
+        var data = new DataObject(typeof(SecretEntry).FullName!, entry);
+        _entryListView.DoDragDrop(data, DragDropEffects.Move);
+    }
+
+    private void BeginGroupDrag(object? draggedItem)
+    {
+        if (draggedItem is not TreeNode node || node.Tag is not string sourceGroupPath || string.IsNullOrWhiteSpace(sourceGroupPath))
+        {
+            return;
+        }
+
+        _statusLabel.Text = $"Gruppe wird verschoben: {sourceGroupPath}";
+        DevLog.WriteLine($"Gruppen-Drag & Drop gestartet: {sourceGroupPath}");
+
+        var data = new DataObject(GroupPathDataFormat, sourceGroupPath);
+        _groupTreeView.DoDragDrop(data, DragDropEffects.Move);
+    }
+
+    private void HandleTreeDragEnter(DragEventArgs e)
+    {
+        e.Effect = TryGetDraggedEntry(e.Data, out _) || TryGetDraggedGroupPath(e.Data, out _)
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+    }
+
+    private void HandleTreeDragOver(TreeView treeView, DragEventArgs e)
+    {
+        var targetNode = GetTargetNode(treeView, e);
+
+        if (TryGetDraggedEntry(e.Data, out _))
+        {
+            if (targetNode?.Tag is not string targetGroupPath || string.IsNullOrWhiteSpace(targetGroupPath))
+            {
+                e.Effect = DragDropEffects.None;
+                _statusLabel.Text = "Einträge können nur auf vorhandene Gruppen verschoben werden.";
+                return;
+            }
+
+            treeView.SelectedNode = targetNode;
+            e.Effect = DragDropEffects.Move;
+            _statusLabel.Text = $"Zielgruppe für Eintrag: {targetGroupPath}";
+            return;
+        }
+
+        if (TryGetDraggedGroupPath(e.Data, out var sourceGroupPath))
+        {
+            if (!IsValidGroupDropTarget(targetNode, sourceGroupPath))
+            {
+                e.Effect = DragDropEffects.None;
+                _statusLabel.Text = "Gruppen können nicht auf sich selbst oder in eigene Untergruppen verschoben werden.";
+                return;
+            }
+
+            if (targetNode is not null)
+            {
+                treeView.SelectedNode = targetNode;
+            }
+
+            var targetLabel = targetNode?.Tag as string ?? (targetNode?.Text ?? "oberste Ebene");
+            e.Effect = DragDropEffects.Move;
+            _statusLabel.Text = $"Ziel für Gruppe: {targetLabel}";
+            return;
+        }
+
+        e.Effect = DragDropEffects.None;
+    }
+
+    private void HandleTreeDragDrop(TreeView treeView, DragEventArgs e)
+    {
+        var targetNode = GetTargetNode(treeView, e);
+
+        if (TryGetDraggedEntry(e.Data, out var entry))
+        {
+            if (targetNode?.Tag is not string targetGroupPath || string.IsNullOrWhiteSpace(targetGroupPath))
+            {
+                ShowInfo("Bitte den Eintrag auf eine vorhandene Gruppe ziehen.");
+                return;
+            }
+
+            var changed = _organizationService.MoveEntryToGroup(_currentVault, entry, targetGroupPath);
+            if (!changed)
+            {
+                _statusLabel.Text = $"Eintrag bereits in Gruppe: {targetGroupPath}";
+                return;
+            }
+
+            DevLog.WriteLine($"Eintrag per Drag & Drop verschoben: {entry.Title} -> {targetGroupPath}");
+            MarkDirty();
+            SelectGroupPath(targetGroupPath);
+            ApplyFiltersAndRefresh(entry.Id);
+            return;
+        }
+
+        if (TryGetDraggedGroupPath(e.Data, out var sourceGroupPath))
+        {
+            if (!IsValidGroupDropTarget(targetNode, sourceGroupPath))
+            {
+                ShowInfo("Die gewählte Zielposition ist für diese Gruppe ungültig.");
+                return;
+            }
+
+            var targetParentPath = targetNode?.Tag as string;
+
+            try
+            {
+                var newPath = _organizationService.MoveGroup(_currentVault, sourceGroupPath, targetParentPath);
+                if (string.IsNullOrWhiteSpace(newPath))
+                {
+                    _statusLabel.Text = "Gruppe bereits an dieser Position.";
+                    return;
+                }
+
+                var targetLabel = string.IsNullOrWhiteSpace(targetParentPath) ? "oberste Ebene" : targetParentPath;
+                DevLog.WriteLine($"Gruppe per Drag & Drop verschoben: {sourceGroupPath} -> {targetLabel}");
+                MarkDirty();
+                BuildGroupNodesFromVault();
+                SelectGroupPath(newPath);
+                ApplyFiltersAndRefresh();
+            }
+            catch (InvalidOperationException exception)
+            {
+                ShowInfo(exception.Message);
+            }
+        }
+    }
+
+    private static TreeNode? GetTargetNode(TreeView treeView, DragEventArgs e)
+    {
+        var clientPoint = treeView.PointToClient(new Point(e.X, e.Y));
+        return treeView.GetNodeAt(clientPoint);
+    }
+
+    private static bool IsValidGroupDropTarget(TreeNode? targetNode, string sourceGroupPath)
+    {
+        if (targetNode is null)
+        {
+            return false;
+        }
+
+        var targetGroupPath = targetNode.Tag as string;
+        if (string.IsNullOrWhiteSpace(targetGroupPath))
+        {
+            return true;
+        }
+
+        if (string.Equals(targetGroupPath, sourceGroupPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (targetGroupPath.StartsWith(sourceGroupPath + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetDraggedGroupPath(IDataObject? dataObject, out string groupPath)
+    {
+        if (dataObject is not null && dataObject.GetDataPresent(GroupPathDataFormat) && dataObject.GetData(GroupPathDataFormat) is string draggedGroupPath)
+        {
+            groupPath = draggedGroupPath;
+            return true;
+        }
+
+        groupPath = string.Empty;
+        return false;
+    }
+
+    private static bool TryGetDraggedEntry(IDataObject? dataObject, out SecretEntry entry)
+    {
+        var format = typeof(SecretEntry).FullName!;
+        if (dataObject is not null && dataObject.GetDataPresent(format) && dataObject.GetData(format) is SecretEntry draggedEntry)
+        {
+            entry = draggedEntry;
+            return true;
+        }
+
+        entry = null!;
+        return false;
     }
 
     private void CreateNewEntry()
@@ -719,23 +941,15 @@ public sealed class MainForm : Form
         ApplyFiltersAndRefresh(entry.Id);
     }
 
-    private void CreateMainGroup() => CreateGroupInternal(parentGroupPath: null, title: "Neue Hauptgruppe", description: "Neue Hauptgruppe direkt unterhalb des Tresors anlegen");
-
-    private void CreateSubGroup()
+    private void CreateGroup(bool createAsRoot = false)
     {
-        var parentGroupPath = GetSelectedGroupPath();
-        if (string.IsNullOrWhiteSpace(parentGroupPath))
-        {
-            ShowInfo("Bitte zuerst eine Gruppe auswählen, unter der die neue Untergruppe angelegt werden soll.");
-            return;
-        }
-
-        CreateGroupInternal(parentGroupPath, "Neue Untergruppe", $"Neue Untergruppe unter:{Environment.NewLine}{parentGroupPath}");
-    }
-
-    private void CreateGroupInternal(string? parentGroupPath, string title, string description)
-    {
-        using var dialog = new GroupNameDialog(title: title, description: description, initialName: string.Empty);
+        var parentGroupPath = createAsRoot ? null : GetSelectedGroupPath();
+        using var dialog = new GroupNameDialog(
+            title: "Neue Gruppe",
+            description: string.IsNullOrWhiteSpace(parentGroupPath)
+                ? "Neue Hauptgruppe anlegen"
+                : $"Neue Untergruppe unter:{Environment.NewLine}{parentGroupPath}",
+            initialName: string.Empty);
 
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
@@ -757,12 +971,23 @@ public sealed class MainForm : Form
         }
     }
 
+    private void CreateSubGroup()
+    {
+        if (string.IsNullOrWhiteSpace(GetSelectedGroupPath()))
+        {
+            ShowInfo("Bitte zuerst die Zielgruppe auswählen, unter der die neue Untergruppe angelegt werden soll.");
+            return;
+        }
+
+        CreateGroup(createAsRoot: false);
+    }
+
     private void RenameSelectedGroup()
     {
         var selectedGroupPath = GetSelectedGroupPath();
         if (string.IsNullOrWhiteSpace(selectedGroupPath))
         {
-            ShowInfo("Bitte zuerst eine Gruppe auswählen.");
+            ShowInfo("Bitte zuerst eine Gruppe auswählen. Der Tresorknoten selbst kann nicht gelöscht werden.");
             return;
         }
 
@@ -836,7 +1061,14 @@ public sealed class MainForm : Form
             DevLog.WriteLine($"Gruppe gelöscht: {selectedGroupPath}");
             MarkDirty();
             BuildGroupNodesFromVault();
-            SelectGroupPath(parentPath);
+            if (!string.IsNullOrWhiteSpace(parentPath))
+            {
+                SelectGroupPath(parentPath);
+            }
+            else if (_groupTreeView.Nodes.Count > 0)
+            {
+                _groupTreeView.SelectedNode = _groupTreeView.Nodes[0];
+            }
             ApplyFiltersAndRefresh();
         }
         catch (InvalidOperationException exception)
@@ -858,35 +1090,7 @@ public sealed class MainForm : Form
         return false;
     }
 
-    private string? GetSelectedGroupPath()
-    {
-        var tag = _groupTreeView.SelectedNode?.Tag as string;
-        return string.Equals(tag, RootNodeTag, StringComparison.Ordinal) ? null : tag;
-    }
-
-    private bool IsRootNode(TreeNode? node) => string.Equals(node?.Tag as string, RootNodeTag, StringComparison.Ordinal);
-
-    private void ConfigureTreeContextMenuForSelection(TreeNode? selectedNode)
-    {
-        var isRoot = IsRootNode(selectedNode);
-        var hasGroup = !isRoot && !string.IsNullOrWhiteSpace(selectedNode?.Tag as string);
-
-        _treeContextMenu.Items[0].Enabled = _currentVault is not null; // Neue Hauptgruppe
-        _treeContextMenu.Items[1].Enabled = hasGroup;                  // Neue Untergruppe
-        _treeContextMenu.Items[3].Enabled = hasGroup;                  // Umbenennen
-        _treeContextMenu.Items[4].Enabled = hasGroup;                  // Löschen
-    }
-
-    private void ConfigureEntryContextMenuForSelection()
-    {
-        var hasSelectedEntry = _entryListView.SelectedItems.Count > 0;
-        var hasSelectedGroup = !string.IsNullOrWhiteSpace(GetSelectedGroupPath());
-
-        _entryContextMenu.Items[0].Enabled = _currentVault is not null; // Neuer Eintrag
-        _entryContextMenu.Items[1].Enabled = hasSelectedEntry;          // Bearbeiten
-        _entryContextMenu.Items[2].Enabled = hasSelectedEntry;          // Löschen
-        _entryContextMenu.Items[4].Enabled = hasSelectedEntry && hasSelectedGroup; // Verschieben
-    }
+    private string? GetSelectedGroupPath() => _groupTreeView.SelectedNode?.Tag as string;
 
     private async Task CreateNewVaultAsync()
     {
@@ -1063,7 +1267,7 @@ public sealed class MainForm : Form
         _editEntryMenuItem.Enabled = hasSelectedEntry;
         _deleteEntryMenuItem.Enabled = hasSelectedEntry;
         _moveEntryMenuItem.Enabled = hasSelectedEntry && hasSelectedGroup;
-        _newMainGroupMenuItem.Enabled = hasVault;
+        _newGroupMenuItem.Enabled = hasVault;
         _newSubGroupMenuItem.Enabled = hasSelectedGroup;
         _renameGroupMenuItem.Enabled = hasSelectedGroup;
         _deleteGroupMenuItem.Enabled = hasSelectedGroup;
@@ -1075,9 +1279,6 @@ public sealed class MainForm : Form
         _newGroupButton.Enabled = hasVault;
         _renameGroupButton.Enabled = hasSelectedGroup;
         _deleteGroupButton.Enabled = hasSelectedGroup;
-
-        ConfigureTreeContextMenuForSelection(_groupTreeView.SelectedNode);
-        ConfigureEntryContextMenuForSelection();
     }
 
     private string CreateSuggestedFileName()
@@ -1093,10 +1294,16 @@ public sealed class MainForm : Form
 
     private void SelectGroupPath(string? groupPath)
     {
-        TreeNode? node = string.IsNullOrWhiteSpace(groupPath)
-            ? FindNodeByTag(_groupTreeView.Nodes, RootNodeTag)
-            : FindNodeByTag(_groupTreeView.Nodes, groupPath);
+        if (string.IsNullOrWhiteSpace(groupPath))
+        {
+            if (_groupTreeView.Nodes.Count > 0)
+            {
+                _groupTreeView.SelectedNode = _groupTreeView.Nodes[0];
+            }
+            return;
+        }
 
+        var node = FindNodeByPath(_groupTreeView.Nodes, groupPath);
         if (node is not null)
         {
             _groupTreeView.SelectedNode = node;
@@ -1104,16 +1311,16 @@ public sealed class MainForm : Form
         }
     }
 
-    private static TreeNode? FindNodeByTag(TreeNodeCollection nodes, string tagValue)
+    private static TreeNode? FindNodeByPath(TreeNodeCollection nodes, string groupPath)
     {
         foreach (TreeNode node in nodes)
         {
-            if (string.Equals(node.Tag as string, tagValue, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(node.Tag as string, groupPath, StringComparison.OrdinalIgnoreCase))
             {
                 return node;
             }
 
-            var child = FindNodeByTag(node.Nodes, tagValue);
+            var child = FindNodeByPath(node.Nodes, groupPath);
             if (child is not null)
             {
                 return child;

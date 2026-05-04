@@ -32,6 +32,54 @@ public sealed class VaultOrganizationServiceTests
     }
 
     [Fact]
+    public void MoveGroup_ToAnotherParent_UpdatesDescendants()
+    {
+        var vault = CreateVault();
+
+        var newPath = _service.MoveGroup(vault, "SASD-GmbH/IONOS", "Privat");
+
+        Assert.Equal("Privat/IONOS", newPath);
+        Assert.Contains(vault.Groups, group => group.Path == "Privat/IONOS/Mail");
+        Assert.Equal(
+            vault.Groups.Single(group => group.Path == "Privat").Id,
+            vault.Groups.Single(group => group.Path == "Privat/IONOS").ParentGroupId);
+    }
+
+    [Fact]
+    public void MoveGroup_ToRoot_ClearsParentGroupId()
+    {
+        var vault = CreateVault();
+
+        var newPath = _service.MoveGroup(vault, "SASD-GmbH/IONOS", null);
+
+        Assert.Equal("IONOS", newPath);
+        var movedGroup = vault.Groups.Single(group => group.Path == "IONOS");
+        Assert.Null(movedGroup.ParentGroupId);
+        Assert.Contains(vault.Groups, group => group.Path == "IONOS/Mail");
+    }
+
+    [Fact]
+    public void MoveGroup_Throws_WhenTargetIsDescendant()
+    {
+        var vault = CreateVault();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            _service.MoveGroup(vault, "SASD-GmbH/IONOS", "SASD-GmbH/IONOS/Mail"));
+
+        Assert.Contains("Untergruppe", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MoveGroup_ReturnsNull_WhenPositionDoesNotChange()
+    {
+        var vault = CreateVault();
+
+        var newPath = _service.MoveGroup(vault, "SASD-GmbH/IONOS", "SASD-GmbH");
+
+        Assert.Null(newPath);
+    }
+
+    [Fact]
     public void DeleteGroup_Throws_WhenEntriesStillExist()
     {
         var vault = CreateVault();
@@ -47,12 +95,11 @@ public sealed class VaultOrganizationServiceTests
         var vault = CreateVault();
         var entry = vault.Entries[0];
 
-        var targetGroup = _service.CreateGroup(vault, "API", "SASD-GmbH/IONOS");
-
-        var changed = _service.MoveEntryToGroup(vault, entry, targetGroup.Path);
+        var archive = _service.CreateGroup(vault, "Archiv", "SASD-GmbH");
+        var changed = _service.MoveEntryToGroup(vault, entry, archive.Path);
 
         Assert.True(changed);
-        Assert.Equal(targetGroup.Id, entry.GroupId);
+        Assert.Equal(archive.Id, entry.GroupId);
     }
 
     [Fact]
@@ -80,12 +127,13 @@ public sealed class VaultOrganizationServiceTests
 
     private static SecretVault CreateVault()
     {
-        var root = new EntryGroup { Name = "SASD-GmbH", Path = "SASD-GmbH" };
-        var ionos = new EntryGroup { Name = "IONOS", ParentGroupId = root.Id, Path = "SASD-GmbH/IONOS" };
+        var sasd = new EntryGroup { Name = "SASD-GmbH", Path = "SASD-GmbH" };
+        var privat = new EntryGroup { Name = "Privat", Path = "Privat" };
+        var ionos = new EntryGroup { Name = "IONOS", ParentGroupId = sasd.Id, Path = "SASD-GmbH/IONOS" };
         var mail = new EntryGroup { Name = "Mail", ParentGroupId = ionos.Id, Path = "SASD-GmbH/IONOS/Mail" };
 
         var vault = new SecretVault { Name = "Test Vault" };
-        vault.Groups.AddRange([root, ionos, mail]);
+        vault.Groups.AddRange([sasd, privat, ionos, mail]);
         vault.Entries.Add(new SecretEntry
         {
             Title = "Support Mail",

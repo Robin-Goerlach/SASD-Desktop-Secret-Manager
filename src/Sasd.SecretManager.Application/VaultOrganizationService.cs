@@ -20,7 +20,7 @@ public sealed class VaultOrganizationService
         var parentGroup = ResolveGroup(vault, parentGroupPath, allowNull: true);
         var newPath = parentGroup is null ? normalizedName : $"{parentGroup.Path}/{normalizedName}";
 
-        EnsurePathIsUnique(vault, newPath, excludingGroupId: null);
+        EnsurePathIsUnique(vault, newPath, excludingGroupIds: null);
 
         var group = new EntryGroup
         {
@@ -48,17 +48,50 @@ public sealed class VaultOrganizationService
             : null;
 
         var newPath = parentGroup is null ? normalizedName : $"{parentGroup.Path}/{normalizedName}";
-        EnsurePathIsUnique(vault, newPath, excludingGroupId: group.Id);
+        EnsurePathIsUnique(vault, newPath, excludingGroupIds: new HashSet<Guid> { group.Id });
 
-        var oldPath = group.Path;
-        group.Name = normalizedName;
-        group.Path = newPath;
+        ApplyMovedPath(group, newPath, GetDescendants(vault, group.Id).ToList());
+        return newPath;
+    }
 
-        foreach (var descendant in GetDescendants(vault, group.Id))
+    /// <summary>
+    /// Verschiebt eine Gruppe in eine andere Elterngruppe oder auf die oberste Ebene.
+    /// Gibt den neuen Pfad zurück oder <c>null</c>, wenn sich effektiv nichts geändert hat.
+    /// </summary>
+    public string? MoveGroup(SecretVault vault, string sourceGroupPath, string? targetParentGroupPath)
+    {
+        ArgumentNullException.ThrowIfNull(vault);
+
+        var sourceGroup = ResolveGroup(vault, sourceGroupPath, allowNull: false)!;
+        var descendants = GetDescendants(vault, sourceGroup.Id).ToList();
+
+        if (!string.IsNullOrWhiteSpace(targetParentGroupPath))
         {
-            descendant.Path = newPath + descendant.Path[oldPath.Length..];
+            if (string.Equals(sourceGroupPath, targetParentGroupPath, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Eine Gruppe kann nicht auf sich selbst verschoben werden.");
+            }
+
+            if (targetParentGroupPath.StartsWith(sourceGroupPath + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Eine Gruppe kann nicht in eine eigene Untergruppe verschoben werden.");
+            }
         }
 
+        var targetParent = ResolveGroup(vault, targetParentGroupPath, allowNull: true);
+        var newPath = targetParent is null ? sourceGroup.Name : $"{targetParent.Path}/{sourceGroup.Name}";
+
+        if (sourceGroup.ParentGroupId == targetParent?.Id
+            && string.Equals(sourceGroup.Path, newPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var excludedIds = descendants.Select(item => item.Id).Append(sourceGroup.Id).ToHashSet();
+        EnsurePathIsUnique(vault, newPath, excludingGroupIds: excludedIds);
+
+        sourceGroup.ParentGroupId = targetParent?.Id;
+        ApplyMovedPath(sourceGroup, newPath, descendants);
         return newPath;
     }
 
@@ -116,6 +149,17 @@ public sealed class VaultOrganizationService
         return vault.Entries.Remove(entry);
     }
 
+    private static void ApplyMovedPath(EntryGroup group, string newPath, IReadOnlyList<EntryGroup> descendants)
+    {
+        var oldPath = group.Path;
+        group.Path = newPath;
+
+        foreach (var descendant in descendants)
+        {
+            descendant.Path = newPath + descendant.Path[oldPath.Length..];
+        }
+    }
+
     private static EntryGroup? ResolveGroup(SecretVault vault, string? groupPath, bool allowNull)
     {
         if (string.IsNullOrWhiteSpace(groupPath))
@@ -154,10 +198,10 @@ public sealed class VaultOrganizationService
         }
     }
 
-    private static void EnsurePathIsUnique(SecretVault vault, string path, Guid? excludingGroupId)
+    private static void EnsurePathIsUnique(SecretVault vault, string path, ISet<Guid>? excludingGroupIds)
     {
         var duplicateExists = vault.Groups.Any(item =>
-            item.Id != excludingGroupId
+            (excludingGroupIds is null || !excludingGroupIds.Contains(item.Id))
             && string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase));
 
         if (duplicateExists)
