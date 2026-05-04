@@ -214,6 +214,6 @@ public sealed class EntryMutationService
     {
         return string.IsNullOrWhiteSpace(value)
             ? string.Empty
-            : value.Replace("\r\n", "\n").Replace("\n", Environment.NewLine).Trim();
+            : value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", Environment.NewLine, StringComparison.Ordinal).Trim();
     }
 }

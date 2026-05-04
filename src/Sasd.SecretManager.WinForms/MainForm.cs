@@ -1,13 +1,14 @@
 using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Domain;
 using Sasd.SecretManager.Security;
+using Sasd.SecretManager.Storage;
 
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
-/// Erste Hauptoberfläche der Anwendung.
-/// Milestone 3 erweitert die Shell um eine strukturierte Detailansicht
-/// und erste Bearbeitung direkt im In-Memory-Tresor.
+/// Hauptoberfläche der Anwendung.
+/// Milestone 4 ergänzt erstmals den Tresor-Lebenszyklus
+/// mit Neu, Öffnen, Speichern und Speichern unter.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -22,8 +23,13 @@ public sealed class MainForm : Form
     private readonly VaultSummaryService _summaryService = new();
     private readonly VaultQueryService _queryService = new();
     private readonly EntryMutationService _mutationService = new();
+    private readonly VaultLifecycleService _vaultLifecycleService = new();
+    private readonly IVaultRepository _vaultRepository = new VaultFileRepository();
 
     private SecretVault _currentVault = new();
+    private string? _currentVaultFilePath;
+    private string? _currentMasterPassword;
+    private bool _isDirty;
     private int _sortColumn;
     private bool _sortAscending = true;
 
@@ -94,12 +100,14 @@ public sealed class MainForm : Form
         };
 
         var fileMenu = new ToolStripMenuItem("Datei");
+        fileMenu.DropDownItems.Add("Neuer Tresor", null, async (_, _) => await CreateNewVaultAsync());
+        fileMenu.DropDownItems.Add("Tresor öffnen", null, async (_, _) => await OpenVaultAsync());
+        fileMenu.DropDownItems.Add(new ToolStripSeparator());
+        fileMenu.DropDownItems.Add("Tresor speichern", null, async (_, _) => await SaveVaultAsync(saveAs: false));
+        fileMenu.DropDownItems.Add("Tresor speichern unter", null, async (_, _) => await SaveVaultAsync(saveAs: true));
+        fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add("Neuer Eintrag", null, (_, _) => CreateNewEntry());
         fileMenu.DropDownItems.Add("Eintrag bearbeiten", null, (_, _) => EditSelectedEntry());
-        fileMenu.DropDownItems.Add(new ToolStripSeparator());
-        fileMenu.DropDownItems.Add("Neuer Tresor", null, (_, _) => ShowInfo("Noch nicht implementiert."));
-        fileMenu.DropDownItems.Add("Tresor öffnen", null, (_, _) => ShowInfo("Noch nicht implementiert."));
-        fileMenu.DropDownItems.Add("Tresor speichern", null, (_, _) => ShowInfo("Noch nicht implementiert."));
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add("Beenden", null, (_, _) => Close());
 
@@ -304,10 +312,19 @@ public sealed class MainForm : Form
     private void LoadDemoVault()
     {
         var factory = new DemoVaultFactory();
-        _currentVault = factory.CreateDemoVault();
+        SetCurrentVault(factory.CreateDemoVault(), null, null, isDirty: false);
+    }
+
+    private void SetCurrentVault(SecretVault vault, string? filePath, string? masterPassword, bool isDirty)
+    {
+        _currentVault = vault ?? throw new ArgumentNullException(nameof(vault));
+        _currentVaultFilePath = filePath;
+        _currentMasterPassword = masterPassword;
+        _isDirty = isDirty;
 
         BuildGroupNodesFromVault();
         ApplyVaultSummary();
+        UpdateWindowTitle();
 
         if (_groupTreeView.Nodes.Count > 0)
         {
@@ -370,7 +387,8 @@ public sealed class MainForm : Form
         var groupLabel = string.IsNullOrWhiteSpace(selectedGroupPath) ? "Alle Gruppen" : selectedGroupPath;
         var searchLabel = string.IsNullOrWhiteSpace(searchText) ? string.Empty : $" · Suche: {searchText}";
         var sortDirection = _sortAscending ? "aufsteigend" : "absteigend";
-        _statusLabel.Text = $"{groupLabel} · {visibleEntries.Count} Einträge · Sortierung Spalte {_sortColumn + 1} ({sortDirection}){searchLabel}";
+        var dirtyLabel = _isDirty ? " · ungespeichert" : string.Empty;
+        _statusLabel.Text = $"{groupLabel} · {visibleEntries.Count} Einträge · Sortierung Spalte {_sortColumn + 1} ({sortDirection}){searchLabel}{dirtyLabel}";
     }
 
     private void RefreshEntryList(IReadOnlyList<SecretEntry> entries, Guid selectedEntryId)
@@ -439,6 +457,7 @@ public sealed class MainForm : Form
 
         var newEntry = _mutationService.CreateEntry(_currentVault, dialog.ResultModel);
         DevLog.WriteLine($"Neuer Eintrag erstellt: {newEntry.Title}");
+        MarkDirty();
         SelectGroupPath(dialog.ResultModel.SelectedGroupPath);
         ApplyFiltersAndRefresh(newEntry.Id);
     }
@@ -462,6 +481,7 @@ public sealed class MainForm : Form
 
         _mutationService.UpdateEntry(_currentVault, entry, dialog.ResultModel);
         DevLog.WriteLine($"Eintrag bearbeitet: {entry.Title}");
+        MarkDirty();
         SelectGroupPath(dialog.ResultModel.SelectedGroupPath);
         ApplyFiltersAndRefresh(entry.Id);
     }
@@ -477,6 +497,179 @@ public sealed class MainForm : Form
         entry = null!;
         ShowInfo("Bitte zuerst einen Eintrag auswählen.");
         return false;
+    }
+
+    private async Task CreateNewVaultAsync()
+    {
+        if (!await ConfirmDiscardOrSaveIfDirtyAsync())
+        {
+            return;
+        }
+
+        using var dialog = new NewVaultDialog();
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var vault = _vaultLifecycleService.CreateNewVault(dialog.VaultName);
+        SetCurrentVault(vault, null, dialog.MasterPassword, isDirty: true);
+        DevLog.WriteLine($"Neuer Tresor angelegt: {vault.Name}");
+        _statusLabel.Text = $"Neuer Tresor angelegt: {vault.Name}";
+    }
+
+    private async Task OpenVaultAsync()
+    {
+        if (!await ConfirmDiscardOrSaveIfDirtyAsync())
+        {
+            return;
+        }
+
+        using var fileDialog = new OpenFileDialog
+        {
+            Title = "Tresor öffnen",
+            Filter = "SASD Vault (*.svault)|*.svault",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+
+        if (fileDialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        using var passwordDialog = new MasterPasswordDialog(
+            "Tresor öffnen",
+            "Bitte Master-Passwort für den ausgewählten Tresor eingeben.");
+
+        if (passwordDialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var loadedVault = await _vaultRepository.LoadAsync(fileDialog.FileName, passwordDialog.Password);
+            SetCurrentVault(loadedVault, fileDialog.FileName, passwordDialog.Password, isDirty: false);
+            DevLog.WriteLine($"Tresor geöffnet: {Path.GetFileName(fileDialog.FileName)}");
+            _statusLabel.Text = $"Tresor geöffnet: {Path.GetFileName(fileDialog.FileName)}";
+        }
+        catch (VaultStorageException exception)
+        {
+            ShowError(exception.Message, exception);
+        }
+    }
+
+    private async Task<bool> SaveVaultAsync(bool saveAs)
+    {
+        var targetPath = _currentVaultFilePath;
+
+        if (saveAs || string.IsNullOrWhiteSpace(targetPath))
+        {
+            using var fileDialog = new SaveFileDialog
+            {
+                Title = saveAs ? "Tresor speichern unter" : "Tresor speichern",
+                Filter = "SASD Vault (*.svault)|*.svault",
+                DefaultExt = "svault",
+                AddExtension = true,
+                FileName = CreateSuggestedFileName(),
+            };
+
+            if (fileDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return false;
+            }
+
+            targetPath = fileDialog.FileName;
+        }
+
+        var password = _currentMasterPassword;
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            using var passwordDialog = new MasterPasswordDialog(
+                "Tresor speichern",
+                "Bitte Master-Passwort für diesen Tresor eingeben.");
+
+            if (passwordDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return false;
+            }
+
+            password = passwordDialog.Password;
+        }
+
+        try
+        {
+            await _vaultRepository.SaveAsync(_currentVault, targetPath!, password!);
+            _currentVaultFilePath = targetPath;
+            _currentMasterPassword = password;
+            _isDirty = false;
+            UpdateWindowTitle();
+            ApplyFiltersAndRefresh();
+            DevLog.WriteLine($"Tresor gespeichert: {Path.GetFileName(targetPath)}");
+            _statusLabel.Text = $"Tresor gespeichert: {Path.GetFileName(targetPath)}";
+            return true;
+        }
+        catch (VaultStorageException exception)
+        {
+            ShowError(exception.Message, exception);
+            return false;
+        }
+    }
+
+    private async Task<bool> ConfirmDiscardOrSaveIfDirtyAsync()
+    {
+        if (!_isDirty)
+        {
+            return true;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            "Der aktuelle Tresor enthält ungespeicherte Änderungen. Möchtest du ihn vor dem Fortfahren speichern?",
+            "SASD Secret Manager",
+            MessageBoxButtons.YesNoCancel,
+            MessageBoxIcon.Question);
+
+        if (result == DialogResult.Cancel)
+        {
+            return false;
+        }
+
+        if (result == DialogResult.No)
+        {
+            return true;
+        }
+
+        return await SaveVaultAsync(saveAs: false);
+    }
+
+    private void MarkDirty()
+    {
+        _isDirty = true;
+        UpdateWindowTitle();
+        ApplyFiltersAndRefresh();
+    }
+
+    private void UpdateWindowTitle()
+    {
+        var vaultName = string.IsNullOrWhiteSpace(_currentVault.Name) ? "Unbenannter Tresor" : _currentVault.Name;
+        var fileLabel = string.IsNullOrWhiteSpace(_currentVaultFilePath)
+            ? "ohne Datei"
+            : Path.GetFileName(_currentVaultFilePath);
+        var dirtyMarker = _isDirty ? " *" : string.Empty;
+        Text = $"SASD Secret Manager – {vaultName} [{fileLabel}]{dirtyMarker}";
+    }
+
+    private string CreateSuggestedFileName()
+    {
+        var name = string.IsNullOrWhiteSpace(_currentVault.Name) ? "secret-vault" : _currentVault.Name.Trim();
+        foreach (var invalidChar in Path.GetInvalidFileNameChars())
+        {
+            name = name.Replace(invalidChar, '-');
+        }
+
+        return name.EndsWith(".svault", StringComparison.OrdinalIgnoreCase) ? name : name + ".svault";
     }
 
     private void SelectGroupPath(string? groupPath)
@@ -517,5 +710,22 @@ public sealed class MainForm : Form
     {
         DevLog.WriteLine(message);
         MessageBox.Show(this, message, "SASD Secret Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void ShowError(string message, Exception exception)
+    {
+        DevLog.WriteException(message, exception);
+        MessageBox.Show(this, message, "SASD Secret Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+
+    protected override async void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (!await ConfirmDiscardOrSaveIfDirtyAsync())
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        base.OnFormClosing(e);
     }
 }

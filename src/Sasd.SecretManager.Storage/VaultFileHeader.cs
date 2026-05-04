@@ -16,8 +16,12 @@ public sealed class VaultFileHeader
     public int FormatVersion { get; set; } = VaultFileConstants.CurrentFormatVersion;
 
     /// <summary>
-    /// Freie textuelle Beschreibung des KDF-Profils.
-    /// Die eigentlichen Sicherheitsparameter folgen erst in späteren Schritten.
+    /// Textuelle Beschreibung des KDF-Profils.
     /// </summary>
-    public string KeyDerivationProfile { get; set; } = "planned";
+    public string KeyDerivationProfile { get; set; } = "PBKDF2-SHA256";
+
+    /// <summary>
+    /// Textuelle Beschreibung des Verschlüsselungsprofils.
+    /// </summary>
+    public string EncryptionProfile { get; set; } = "AES-256-GCM";
 }

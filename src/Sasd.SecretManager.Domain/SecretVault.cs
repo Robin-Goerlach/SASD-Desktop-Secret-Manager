@@ -23,15 +23,15 @@ public sealed class SecretVault
     /// <summary>
     /// Alle fachlichen Gruppen innerhalb des Tresors.
     /// </summary>
-    public List<EntryGroup> Groups { get; } = new();
+    public List<EntryGroup> Groups { get; set; } = new();
 
     /// <summary>
     /// Alle Einträge innerhalb des Tresors.
     /// </summary>
-    public List<SecretEntry> Entries { get; } = new();
+    public List<SecretEntry> Entries { get; set; } = new();
 
     /// <summary>
     /// Globale bekannte Tags des Tresors.
     /// </summary>
-    public List<string> KnownTags { get; } = new();
+    public List<string> KnownTags { get; set; } = new();
 }

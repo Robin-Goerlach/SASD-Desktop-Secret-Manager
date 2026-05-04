@@ -45,12 +45,12 @@ public sealed class SecretEntry
     /// <summary>
     /// Flexible Tag-Liste für Querverbindungen und Suche.
     /// </summary>
-    public List<string> Tags { get; } = new();
+    public List<string> Tags { get; set; } = new();
 
     /// <summary>
     /// Frei definierbare Zusatzfelder.
     /// </summary>
-    public List<CustomField> CustomFields { get; } = new();
+    public List<CustomField> CustomFields { get; set; } = new();
 
     /// <summary>
     /// Erstellungszeitpunkt in UTC.
