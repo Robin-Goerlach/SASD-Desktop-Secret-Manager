@@ -12,6 +12,7 @@ public static class DevLog
 {
     private static readonly object SyncRoot = new();
     private static string? _sessionLogPath;
+    private static Encoding? _sessionEncoding;
 
     /// <summary>
     /// Pfad der aktuellen Session-Logdatei.
@@ -37,16 +38,15 @@ public static class DevLog
             Directory.CreateDirectory(directory);
 
             _sessionLogPath = Path.Combine(directory, "debug-session.log");
+            _sessionEncoding = ResolveSessionEncoding();
 
             if (File.Exists(_sessionLogPath))
             {
                 File.Delete(_sessionLogPath);
             }
 
-            File.WriteAllText(
-                _sessionLogPath,
-                $"=== SASD Secret Manager Debug Session {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}",
-                Encoding.UTF8);
+            using var writer = new StreamWriter(_sessionLogPath, false, _sessionEncoding);
+            writer.WriteLine($"=== SASD Secret Manager Debug Session {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
         }
         catch
         {
@@ -94,7 +94,7 @@ public static class DevLog
         {
             lock (SyncRoot)
             {
-                File.AppendAllText(_sessionLogPath, line + Environment.NewLine, Encoding.UTF8);
+                File.AppendAllText(_sessionLogPath, line + Environment.NewLine, _sessionEncoding ?? ResolveSessionEncoding());
             }
         }
         catch
@@ -102,5 +102,23 @@ public static class DevLog
             // Logging darf die Anwendung niemals blockieren.
         }
 #endif
+    }
+
+    private static Encoding ResolveSessionEncoding()
+    {
+        try
+        {
+            var consoleEncoding = Console.OutputEncoding;
+            if (string.Equals(consoleEncoding.WebName, "utf-8", StringComparison.OrdinalIgnoreCase))
+            {
+                return new UTF8Encoding(false);
+            }
+
+            return consoleEncoding;
+        }
+        catch
+        {
+            return new UTF8Encoding(false);
+        }
     }
 }

@@ -32,7 +32,7 @@ public sealed class DemoVaultFactory
         var finanzen = new EntryGroup { Name = "Finanzen", ParentGroupId = privat.Id, Path = "Privat/Finanzen" };
 
         vault.Groups.AddRange([sasd, ionos, mail, databases, github, privat, allgemein, finanzen]);
-        vault.KnownTags.AddRange(["SASD", "IONOS", "GitHub", "Privat", "Produktion", "Mail", "Finanzen"]);
+        vault.KnownTags.AddRange(["SASD", "IONOS", "GitHub", "Privat", "Produktion", "Mail", "Finanzen", "Support", "FTP"]);
 
         vault.Entries.Add(CreateFtpEntry(ionos.Id));
         vault.Entries.Add(CreateDatabaseEntry(databases.Id));
@@ -51,7 +51,7 @@ public sealed class DemoVaultFactory
             Title = "IONOS Webspace FTP",
             EntryType = EntryType.Ftp,
             UserName = "deploy-user",
-            Secret = "********",
+            Secret = "Ftp-Example!2026#Deploy",
             Notes = "Früher Demo-Eintrag für Deployment und Webspace-Uploads.",
             GroupId = groupId,
         };
@@ -74,7 +74,7 @@ public sealed class DemoVaultFactory
             Title = "SASD CMS Produktionsdatenbank",
             EntryType = EntryType.Database,
             UserName = "cms_prod",
-            Secret = "********",
+            Secret = "Db-Example!2026#Prod",
             Notes = "Produktionsdatenbank für das CMS. Später mit echter Tresorlogik verschlüsselt.",
             GroupId = groupId,
         };
@@ -98,7 +98,7 @@ public sealed class DemoVaultFactory
             Title = "GitHub Organisation",
             EntryType = EntryType.Login,
             UserName = "Robin-Goerlach",
-            Secret = "********",
+            Secret = "Gh-Example!2026#Owner",
             Notes = "Persönliches Entwicklungs-Repository für frühe Stände; Release-Stände später separat.",
             GroupId = groupId,
         };
@@ -120,7 +120,7 @@ public sealed class DemoVaultFactory
             Title = "support@sasd-gmbh.de",
             EntryType = EntryType.Mail,
             UserName = "support@sasd-gmbh.de",
-            Secret = "********",
+            Secret = "Mail-Example!2026#Support",
             Notes = "Support-Postfach bei IONOS mit klassischer IMAP/SMTP-Konfiguration.",
             GroupId = groupId,
         };
@@ -144,7 +144,7 @@ public sealed class DemoVaultFactory
             Title = "Privates Banking Portal",
             EntryType = EntryType.Login,
             UserName = "robin.private",
-            Secret = "********",
+            Secret = "Bank-Example!2026#Private",
             Notes = "Privater Eintrag für Finanzen. Dient hier nur als Demo für getrennte Bereiche.",
             GroupId = groupId,
         };
@@ -166,7 +166,7 @@ public sealed class DemoVaultFactory
             Title = "Privater Mailzugang",
             EntryType = EntryType.Mail,
             UserName = "robin@example.invalid",
-            Secret = "********",
+            Secret = "Priv-Example!2026#Mail",
             Notes = "Kleiner Demonstrationseintrag für den privaten Bereich.",
             GroupId = groupId,
         };

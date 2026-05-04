@@ -6,19 +6,22 @@ namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Erste Hauptoberfläche der Anwendung.
-/// Der Schwerpunkt dieses Stands liegt darauf,
-/// die UI-Shell an ein echtes In-Memory-Modell anzubinden.
+/// Milestone 3 erweitert die Shell um eine strukturierte Detailansicht
+/// und erste Bearbeitung direkt im In-Memory-Tresor.
 /// </summary>
 public sealed class MainForm : Form
 {
     private readonly TreeView _groupTreeView;
     private readonly ListView _entryListView;
-    private readonly PropertyGrid _detailsPropertyGrid;
+    private readonly EntryDetailsPanel _detailsPanel;
     private readonly ToolStripStatusLabel _statusLabel;
     private readonly TextBox _searchTextBox;
+    private readonly Button _newEntryButton;
+    private readonly Button _editEntryButton;
 
     private readonly VaultSummaryService _summaryService = new();
     private readonly VaultQueryService _queryService = new();
+    private readonly EntryMutationService _mutationService = new();
 
     private SecretVault _currentVault = new();
     private int _sortColumn;
@@ -47,8 +50,10 @@ public sealed class MainForm : Form
 
         _groupTreeView = BuildGroupTreeView();
         _entryListView = BuildEntryListView();
-        _detailsPropertyGrid = BuildDetailsGrid();
+        _detailsPanel = new EntryDetailsPanel();
         _searchTextBox = BuildSearchTextBox();
+        _newEntryButton = BuildActionButton("Neuer Eintrag", (_, _) => CreateNewEntry());
+        _editEntryButton = BuildActionButton("Bearbeiten", (_, _) => EditSelectedEntry());
 
         var horizontalSplit = new SplitContainer
         {
@@ -69,7 +74,7 @@ public sealed class MainForm : Form
         horizontalSplit.Panel1.Controls.Add(WrapInPanel("Tresore, Gruppen & Tags", _groupTreeView));
         horizontalSplit.Panel2.Controls.Add(rightSplit);
         rightSplit.Panel1.Controls.Add(WrapInPanel("Einträge", BuildEntryArea()));
-        rightSplit.Panel2.Controls.Add(WrapInPanel("Details", _detailsPropertyGrid));
+        rightSplit.Panel2.Controls.Add(WrapInPanel("Details", _detailsPanel));
 
         Controls.Add(horizontalSplit);
         Controls.Add(statusStrip);
@@ -89,6 +94,9 @@ public sealed class MainForm : Form
         };
 
         var fileMenu = new ToolStripMenuItem("Datei");
+        fileMenu.DropDownItems.Add("Neuer Eintrag", null, (_, _) => CreateNewEntry());
+        fileMenu.DropDownItems.Add("Eintrag bearbeiten", null, (_, _) => EditSelectedEntry());
+        fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add("Neuer Tresor", null, (_, _) => ShowInfo("Noch nicht implementiert."));
         fileMenu.DropDownItems.Add("Tresor öffnen", null, (_, _) => ShowInfo("Noch nicht implementiert."));
         fileMenu.DropDownItems.Add("Tresor speichern", null, (_, _) => ShowInfo("Noch nicht implementiert."));
@@ -153,13 +161,13 @@ public sealed class MainForm : Form
         listView.Columns.Add("Titel", 280);
         listView.Columns.Add("Typ", 130);
         listView.Columns.Add("Benutzer", 180);
-        listView.Columns.Add("Tags", 220);
+        listView.Columns.Add("Tags", 260);
 
         listView.SelectedIndexChanged += (_, _) =>
         {
             if (listView.SelectedItems.Count == 0)
             {
-                _detailsPropertyGrid.SelectedObject = null;
+                _detailsPanel.ClearDetails();
                 return;
             }
 
@@ -185,32 +193,9 @@ public sealed class MainForm : Form
             ApplyFiltersAndRefresh();
         };
 
-        listView.DoubleClick += (_, _) =>
-        {
-            if (listView.SelectedItems.Count == 0)
-            {
-                return;
-            }
-
-            var entry = (SecretEntry)listView.SelectedItems[0].Tag!;
-            var details = CreateDetailViewModel(entry);
-            using var dialog = new EntryDetailsDialog(details);
-            dialog.ShowDialog(this);
-        };
-
+        listView.DoubleClick += (_, _) => EditSelectedEntry();
         return listView;
     }
-
-    private PropertyGrid BuildDetailsGrid() => new()
-    {
-        Dock = DockStyle.Fill,
-        HelpVisible = true,
-        ToolbarVisible = false,
-        BackColor = Color.FromArgb(32, 39, 49),
-        ForeColor = Color.Gainsboro,
-        ViewBackColor = Color.FromArgb(32, 39, 49),
-        ViewForeColor = Color.Gainsboro,
-    };
 
     private TextBox BuildSearchTextBox()
     {
@@ -218,7 +203,7 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Top,
             PlaceholderText = "Suche nach Titel, Tags, Gruppen oder Zusatzfeldern …",
-            Margin = new Padding(0, 0, 0, 12),
+            Margin = new Padding(0, 0, 0, 8),
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = Color.FromArgb(24, 28, 36),
             ForeColor = Color.Gainsboro,
@@ -235,21 +220,51 @@ public sealed class MainForm : Form
         return searchBox;
     }
 
+    private Button BuildActionButton(string text, EventHandler onClick)
+    {
+        var button = new Button
+        {
+            AutoSize = true,
+            Text = text,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(45, 86, 160),
+            ForeColor = Color.WhiteSmoke,
+            Margin = new Padding(0, 0, 8, 0),
+            Padding = new Padding(12, 5, 12, 5),
+        };
+        button.Click += onClick;
+        return button;
+    }
+
     private Control BuildEntryArea()
     {
+        var actionsPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = BackColor,
+        };
+        actionsPanel.Controls.Add(_newEntryButton);
+        actionsPanel.Controls.Add(_editEntryButton);
+
         var container = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 3,
             BackColor = BackColor,
         };
 
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         container.Controls.Add(_searchTextBox, 0, 0);
-        container.Controls.Add(_entryListView, 0, 1);
+        container.Controls.Add(actionsPanel, 0, 1);
+        container.Controls.Add(_entryListView, 0, 2);
         return container;
     }
 
@@ -309,9 +324,6 @@ public sealed class MainForm : Form
         _groupTreeView.BeginUpdate();
         _groupTreeView.Nodes.Clear();
 
-        // Wichtig: ParentGroupId ist nullable. Deshalb verwenden wir hier bewusst
-        // ein Lookup anstelle eines Dictionary<Guid?, ...>, damit die Root-Gruppen
-        // mit dem Schlüssel "null" sauber behandelt werden können.
         var groupsByParent = _currentVault.Groups
             .ToLookup(group => group.ParentGroupId);
 
@@ -331,7 +343,7 @@ public sealed class MainForm : Form
             Tag = group.Path,
         };
 
-        foreach (var childGroup in groupsByParent[group.Id].OrderBy(group => group.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var childGroup in groupsByParent[group.Id].OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
         {
             node.Nodes.Add(BuildGroupNodeRecursive(childGroup, groupsByParent));
         }
@@ -344,14 +356,13 @@ public sealed class MainForm : Form
         _statusLabel.Text = _summaryService.CreateSummary(_currentVault);
     }
 
-    private void ApplyFiltersAndRefresh()
+    private void ApplyFiltersAndRefresh(Guid? preferredSelectionId = null)
     {
         var selectedGroupPath = _groupTreeView.SelectedNode?.Tag as string;
         var searchText = _searchTextBox.Text;
 
-        var selectedEntryId = _entryListView.SelectedItems.Count > 0
-            ? ((SecretEntry)_entryListView.SelectedItems[0].Tag!).Id
-            : Guid.Empty;
+        var selectedEntryId = preferredSelectionId
+            ?? (_entryListView.SelectedItems.Count > 0 ? ((SecretEntry)_entryListView.SelectedItems[0].Tag!).Id : Guid.Empty);
 
         var visibleEntries = _queryService.GetVisibleEntries(_currentVault, selectedGroupPath, searchText, _sortColumn, _sortAscending);
         RefreshEntryList(visibleEntries, selectedEntryId);
@@ -398,20 +409,108 @@ public sealed class MainForm : Form
         }
         else
         {
-            _detailsPropertyGrid.SelectedObject = null;
+            _detailsPanel.ClearDetails();
         }
     }
 
     private void ShowEntryDetails(SecretEntry entry)
     {
         var details = CreateDetailViewModel(entry);
-        _detailsPropertyGrid.SelectedObject = details;
+        _detailsPanel.DisplayEntry(details);
     }
 
     private EntryDetailViewModel CreateDetailViewModel(SecretEntry entry)
     {
         var groupPath = _queryService.ResolveGroupPath(_currentVault, entry);
         return EntryDetailViewModel.FromEntry(entry, groupPath);
+    }
+
+    private void CreateNewEntry()
+    {
+        var selectedGroupPath = _groupTreeView.SelectedNode?.Tag as string;
+        var model = EntryEditModel.CreateNew(selectedGroupPath);
+        var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
+
+        using var dialog = new EntryEditDialog("Neuer Eintrag", model, availableGroups);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var newEntry = _mutationService.CreateEntry(_currentVault, dialog.ResultModel);
+        DevLog.WriteLine($"Neuer Eintrag erstellt: {newEntry.Title}");
+        SelectGroupPath(dialog.ResultModel.SelectedGroupPath);
+        ApplyFiltersAndRefresh(newEntry.Id);
+    }
+
+    private void EditSelectedEntry()
+    {
+        if (!TryGetSelectedEntry(out var entry))
+        {
+            return;
+        }
+
+        var groupPath = _queryService.ResolveGroupPath(_currentVault, entry);
+        var model = EntryEditModel.FromEntry(entry, groupPath);
+        var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
+
+        using var dialog = new EntryEditDialog($"Eintrag bearbeiten: {entry.Title}", model, availableGroups);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _mutationService.UpdateEntry(_currentVault, entry, dialog.ResultModel);
+        DevLog.WriteLine($"Eintrag bearbeitet: {entry.Title}");
+        SelectGroupPath(dialog.ResultModel.SelectedGroupPath);
+        ApplyFiltersAndRefresh(entry.Id);
+    }
+
+    private bool TryGetSelectedEntry(out SecretEntry entry)
+    {
+        if (_entryListView.SelectedItems.Count > 0 && _entryListView.SelectedItems[0].Tag is SecretEntry selectedEntry)
+        {
+            entry = selectedEntry;
+            return true;
+        }
+
+        entry = null!;
+        ShowInfo("Bitte zuerst einen Eintrag auswählen.");
+        return false;
+    }
+
+    private void SelectGroupPath(string? groupPath)
+    {
+        if (string.IsNullOrWhiteSpace(groupPath))
+        {
+            return;
+        }
+
+        var node = FindNodeByPath(_groupTreeView.Nodes, groupPath);
+        if (node is not null)
+        {
+            _groupTreeView.SelectedNode = node;
+            node.EnsureVisible();
+        }
+    }
+
+    private static TreeNode? FindNodeByPath(TreeNodeCollection nodes, string groupPath)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            if (string.Equals(node.Tag as string, groupPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return node;
+            }
+
+            var child = FindNodeByPath(node.Nodes, groupPath);
+            if (child is not null)
+            {
+                return child;
+            }
+        }
+
+        return null;
     }
 
     private void ShowInfo(string message)
