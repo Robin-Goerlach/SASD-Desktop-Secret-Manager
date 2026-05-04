@@ -1,20 +1,26 @@
+using Sasd.SecretManager.Security;
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Fragt ein Master-Passwort für Öffnen oder Speichern eines Tresors ab.
+/// In Milestone 5 ergänzt der Dialog eine einfache Qualitätswarnung,
+/// damit triviale Passwörter nicht stillschweigend bestätigt werden.
 /// </summary>
 public sealed class MasterPasswordDialog : Form
 {
     private readonly TextBox _passwordTextBox;
     private readonly CheckBox _showPasswordCheckBox;
+    private readonly Label _strengthLabel;
+    private readonly bool _warnOnWeakPassword;
 
     public string Password => _passwordTextBox.Text;
 
-    public MasterPasswordDialog(string title, string description)
+    public MasterPasswordDialog(string title, string description, bool warnOnWeakPassword = false)
     {
         Text = title;
         Width = 560;
-        Height = 250;
+        Height = 290;
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -22,6 +28,7 @@ public sealed class MasterPasswordDialog : Form
 
         BackColor = Color.FromArgb(25, 30, 38);
         ForeColor = Color.Gainsboro;
+        _warnOnWeakPassword = warnOnWeakPassword;
 
         var descriptionLabel = new Label
         {
@@ -40,6 +47,7 @@ public sealed class MasterPasswordDialog : Form
             BackColor = Color.FromArgb(24, 28, 36),
             ForeColor = Color.Gainsboro,
         };
+        _passwordTextBox.TextChanged += (_, _) => UpdateStrengthFeedback();
 
         _showPasswordCheckBox = new CheckBox
         {
@@ -51,6 +59,18 @@ public sealed class MasterPasswordDialog : Form
             Padding = new Padding(0, 8, 0, 0),
         };
         _showPasswordCheckBox.CheckedChanged += (_, _) => _passwordTextBox.PasswordChar = _showPasswordCheckBox.Checked ? '\0' : '●';
+
+        _strengthLabel = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 48,
+            ForeColor = Color.Silver,
+            Padding = new Padding(0, 8, 0, 0),
+            Text = warnOnWeakPassword
+                ? "Bitte ein möglichst starkes Master-Passwort wählen."
+                : string.Empty,
+            Visible = warnOnWeakPassword,
+        };
 
         var okButton = CreateButton("OK");
         okButton.Click += (_, _) => ConfirmAndClose();
@@ -77,6 +97,7 @@ public sealed class MasterPasswordDialog : Form
             Padding = new Padding(16),
             BackColor = BackColor,
         };
+        content.Controls.Add(_strengthLabel);
         content.Controls.Add(_showPasswordCheckBox);
         content.Controls.Add(_passwordTextBox);
         content.Controls.Add(descriptionLabel);
@@ -86,6 +107,7 @@ public sealed class MasterPasswordDialog : Form
 
         AcceptButton = okButton;
         CancelButton = cancelButton;
+        UpdateStrengthFeedback();
     }
 
     private void ConfirmAndClose()
@@ -97,8 +119,48 @@ public sealed class MasterPasswordDialog : Form
             return;
         }
 
+        if (_warnOnWeakPassword)
+        {
+            var assessment = PasswordStrengthEvaluator.Assess(_passwordTextBox.Text);
+            if (assessment.ShouldWarnBeforeUse)
+            {
+                var confirmation = MessageBox.Show(
+                    this,
+                    $"Das gewählte Master-Passwort wird aktuell als \"{assessment.Summary}\" eingestuft.{Environment.NewLine}{assessment.Recommendation}{Environment.NewLine}{Environment.NewLine}Trotzdem fortfahren?",
+                    "Schwaches Master-Passwort",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (confirmation != DialogResult.Yes)
+                {
+                    _passwordTextBox.Focus();
+                    return;
+                }
+            }
+        }
+
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    private void UpdateStrengthFeedback()
+    {
+        if (!_warnOnWeakPassword)
+        {
+            return;
+        }
+
+        var assessment = PasswordStrengthEvaluator.Assess(_passwordTextBox.Text);
+        _strengthLabel.Text = $"Einschätzung: {assessment.Summary} · {assessment.Recommendation}";
+        _strengthLabel.ForeColor = assessment.Level switch
+        {
+            PasswordStrengthLevel.VeryWeak => Color.IndianRed,
+            PasswordStrengthLevel.Weak => Color.Salmon,
+            PasswordStrengthLevel.Moderate => Color.Khaki,
+            PasswordStrengthLevel.Good => Color.LightGreen,
+            PasswordStrengthLevel.Strong => Color.MediumSpringGreen,
+            _ => Color.Silver,
+        };
     }
 
     private static Button CreateButton(string text)

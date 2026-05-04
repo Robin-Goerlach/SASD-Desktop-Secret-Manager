@@ -1,7 +1,11 @@
+using Sasd.SecretManager.Security;
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Dialog zum Anlegen eines neuen leeren Tresors.
+/// Milestone 5 ergänzt eine direkte Qualitätswarnung
+/// für das Master-Passwort.
 /// </summary>
 public sealed class NewVaultDialog : Form
 {
@@ -9,6 +13,7 @@ public sealed class NewVaultDialog : Form
     private readonly TextBox _passwordTextBox;
     private readonly TextBox _confirmPasswordTextBox;
     private readonly CheckBox _showPasswordCheckBox;
+    private readonly Label _strengthLabel;
 
     public string VaultName => _nameTextBox.Text.Trim();
     public string MasterPassword => _passwordTextBox.Text;
@@ -17,7 +22,7 @@ public sealed class NewVaultDialog : Form
     {
         Text = "Neuen Tresor anlegen";
         Width = 620;
-        Height = 340;
+        Height = 390;
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -43,11 +48,22 @@ public sealed class NewVaultDialog : Form
             _confirmPasswordTextBox.PasswordChar = passwordChar;
         };
 
+        _strengthLabel = new Label
+        {
+            AutoSize = true,
+            ForeColor = Color.Silver,
+            BackColor = Color.Transparent,
+            MaximumSize = new Size(360, 0),
+            Text = "Bitte ein möglichst starkes Master-Passwort wählen.",
+        };
+
+        _passwordTextBox.TextChanged += (_, _) => UpdateStrengthFeedback();
+
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 4,
+            RowCount = 5,
             Padding = new Padding(16),
             BackColor = BackColor,
         };
@@ -60,6 +76,7 @@ public sealed class NewVaultDialog : Form
         table.Controls.Add(CreateLabel("Passwort bestätigen"), 0, 2);
         table.Controls.Add(_confirmPasswordTextBox, 1, 2);
         table.Controls.Add(_showPasswordCheckBox, 1, 3);
+        table.Controls.Add(_strengthLabel, 1, 4);
 
         var okButton = CreateButton("Tresor anlegen");
         okButton.Click += (_, _) => ConfirmAndClose();
@@ -84,6 +101,7 @@ public sealed class NewVaultDialog : Form
         Controls.Add(buttons);
         AcceptButton = okButton;
         CancelButton = cancelButton;
+        UpdateStrengthFeedback();
     }
 
     private void ConfirmAndClose()
@@ -109,8 +127,40 @@ public sealed class NewVaultDialog : Form
             return;
         }
 
+        var assessment = PasswordStrengthEvaluator.Assess(_passwordTextBox.Text);
+        if (assessment.ShouldWarnBeforeUse)
+        {
+            var confirmation = MessageBox.Show(
+                this,
+                $"Das gewählte Master-Passwort wird aktuell als \"{assessment.Summary}\" eingestuft.{Environment.NewLine}{assessment.Recommendation}{Environment.NewLine}{Environment.NewLine}Trotzdem fortfahren?",
+                "Schwaches Master-Passwort",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (confirmation != DialogResult.Yes)
+            {
+                _passwordTextBox.Focus();
+                return;
+            }
+        }
+
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    private void UpdateStrengthFeedback()
+    {
+        var assessment = PasswordStrengthEvaluator.Assess(_passwordTextBox.Text);
+        _strengthLabel.Text = $"Einschätzung: {assessment.Summary} · {assessment.Recommendation}";
+        _strengthLabel.ForeColor = assessment.Level switch
+        {
+            PasswordStrengthLevel.VeryWeak => Color.IndianRed,
+            PasswordStrengthLevel.Weak => Color.Salmon,
+            PasswordStrengthLevel.Moderate => Color.Khaki,
+            PasswordStrengthLevel.Good => Color.LightGreen,
+            PasswordStrengthLevel.Strong => Color.MediumSpringGreen,
+            _ => Color.Silver,
+        };
     }
 
     private static Label CreateLabel(string text)

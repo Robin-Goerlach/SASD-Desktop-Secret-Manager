@@ -7,8 +7,8 @@ namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Hauptoberfläche der Anwendung.
-/// Milestone 4 ergänzt erstmals den Tresor-Lebenszyklus
-/// mit Neu, Öffnen, Speichern und Speichern unter.
+/// Milestone 5 ergänzt Dirty-Tracking-Feinschliff,
+/// klare Fenstertitel und eine sauberere Aktivierung von Menü- und Toolbar-Aktionen.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -19,6 +19,10 @@ public sealed class MainForm : Form
     private readonly TextBox _searchTextBox;
     private readonly Button _newEntryButton;
     private readonly Button _editEntryButton;
+    private readonly ToolStripMenuItem _saveVaultMenuItem;
+    private readonly ToolStripMenuItem _saveVaultAsMenuItem;
+    private readonly ToolStripMenuItem _newEntryMenuItem;
+    private readonly ToolStripMenuItem _editEntryMenuItem;
 
     private readonly VaultSummaryService _summaryService = new();
     private readonly VaultQueryService _queryService = new();
@@ -48,6 +52,11 @@ public sealed class MainForm : Form
         ForeColor = Color.Gainsboro;
 
         DevLog.WriteLine("MainForm wird aufgebaut.");
+
+        _saveVaultMenuItem = new ToolStripMenuItem("Tresor speichern", null, async (_, _) => await SaveVaultAsync(saveAs: false));
+        _saveVaultAsMenuItem = new ToolStripMenuItem("Tresor speichern unter", null, async (_, _) => await SaveVaultAsync(saveAs: true));
+        _newEntryMenuItem = new ToolStripMenuItem("Neuer Eintrag", null, (_, _) => CreateNewEntry());
+        _editEntryMenuItem = new ToolStripMenuItem("Eintrag bearbeiten", null, (_, _) => EditSelectedEntry());
 
         var menuStrip = BuildMenuStrip();
         var statusStrip = BuildStatusStrip();
@@ -103,11 +112,11 @@ public sealed class MainForm : Form
         fileMenu.DropDownItems.Add("Neuer Tresor", null, async (_, _) => await CreateNewVaultAsync());
         fileMenu.DropDownItems.Add("Tresor öffnen", null, async (_, _) => await OpenVaultAsync());
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
-        fileMenu.DropDownItems.Add("Tresor speichern", null, async (_, _) => await SaveVaultAsync(saveAs: false));
-        fileMenu.DropDownItems.Add("Tresor speichern unter", null, async (_, _) => await SaveVaultAsync(saveAs: true));
+        fileMenu.DropDownItems.Add(_saveVaultMenuItem);
+        fileMenu.DropDownItems.Add(_saveVaultAsMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
-        fileMenu.DropDownItems.Add("Neuer Eintrag", null, (_, _) => CreateNewEntry());
-        fileMenu.DropDownItems.Add("Eintrag bearbeiten", null, (_, _) => EditSelectedEntry());
+        fileMenu.DropDownItems.Add(_newEntryMenuItem);
+        fileMenu.DropDownItems.Add(_editEntryMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add("Beenden", null, (_, _) => Close());
 
@@ -176,6 +185,7 @@ public sealed class MainForm : Form
             if (listView.SelectedItems.Count == 0)
             {
                 _detailsPanel.ClearDetails();
+                UpdateUiState();
                 return;
             }
 
@@ -183,6 +193,7 @@ public sealed class MainForm : Form
             ShowEntryDetails(entry);
             _statusLabel.Text = $"Eintrag ausgewählt: {listView.SelectedItems[0].Text}";
             DevLog.WriteLine($"ListView-Auswahl geändert: {listView.SelectedItems[0].Text}");
+            UpdateUiState();
         };
 
         listView.ColumnClick += (_, e) =>
@@ -325,6 +336,7 @@ public sealed class MainForm : Form
         BuildGroupNodesFromVault();
         ApplyVaultSummary();
         UpdateWindowTitle();
+        UpdateUiState();
 
         if (_groupTreeView.Nodes.Count > 0)
         {
@@ -388,7 +400,11 @@ public sealed class MainForm : Form
         var searchLabel = string.IsNullOrWhiteSpace(searchText) ? string.Empty : $" · Suche: {searchText}";
         var sortDirection = _sortAscending ? "aufsteigend" : "absteigend";
         var dirtyLabel = _isDirty ? " · ungespeichert" : string.Empty;
-        _statusLabel.Text = $"{groupLabel} · {visibleEntries.Count} Einträge · Sortierung Spalte {_sortColumn + 1} ({sortDirection}){searchLabel}{dirtyLabel}";
+        var fileLabel = string.IsNullOrWhiteSpace(_currentVaultFilePath)
+            ? " · ohne Datei"
+            : $" · Datei: {Path.GetFileName(_currentVaultFilePath)}";
+        _statusLabel.Text = $"{groupLabel} · {visibleEntries.Count} Einträge · Sortierung Spalte {_sortColumn + 1} ({sortDirection}){searchLabel}{fileLabel}{dirtyLabel}";
+        UpdateUiState();
     }
 
     private void RefreshEntryList(IReadOnlyList<SecretEntry> entries, Guid selectedEntryId)
@@ -429,6 +445,8 @@ public sealed class MainForm : Form
         {
             _detailsPanel.ClearDetails();
         }
+
+        UpdateUiState();
     }
 
     private void ShowEntryDetails(SecretEntry entry)
@@ -479,7 +497,15 @@ public sealed class MainForm : Form
             return;
         }
 
-        _mutationService.UpdateEntry(_currentVault, entry, dialog.ResultModel);
+        var changed = _mutationService.UpdateEntry(_currentVault, entry, dialog.ResultModel);
+        if (!changed)
+        {
+            DevLog.WriteLine($"Bearbeiten beendet ohne Änderung: {entry.Title}");
+            _statusLabel.Text = $"Eintrag unverändert: {entry.Title}";
+            ApplyFiltersAndRefresh(entry.Id);
+            return;
+        }
+
         DevLog.WriteLine($"Eintrag bearbeitet: {entry.Title}");
         MarkDirty();
         SelectGroupPath(dialog.ResultModel.SelectedGroupPath);
@@ -588,7 +614,8 @@ public sealed class MainForm : Form
         {
             using var passwordDialog = new MasterPasswordDialog(
                 "Tresor speichern",
-                "Bitte Master-Passwort für diesen Tresor eingeben.");
+                "Bitte Master-Passwort für diesen Tresor eingeben.",
+                warnOnWeakPassword: true);
 
             if (passwordDialog.ShowDialog(this) != DialogResult.OK)
             {
@@ -659,6 +686,19 @@ public sealed class MainForm : Form
             : Path.GetFileName(_currentVaultFilePath);
         var dirtyMarker = _isDirty ? " *" : string.Empty;
         Text = $"SASD Secret Manager – {vaultName} [{fileLabel}]{dirtyMarker}";
+    }
+
+    private void UpdateUiState()
+    {
+        var hasVault = _currentVault is not null;
+        var hasSelectedEntry = _entryListView.SelectedItems.Count > 0;
+
+        _saveVaultMenuItem.Enabled = hasVault && _isDirty;
+        _saveVaultAsMenuItem.Enabled = hasVault;
+        _newEntryMenuItem.Enabled = hasVault;
+        _editEntryMenuItem.Enabled = hasSelectedEntry;
+        _newEntryButton.Enabled = hasVault;
+        _editEntryButton.Enabled = hasSelectedEntry;
     }
 
     private string CreateSuggestedFileName()

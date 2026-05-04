@@ -43,27 +43,54 @@ public sealed class EntryMutationService
         return entry;
     }
 
-    public void UpdateEntry(SecretVault vault, SecretEntry entry, EntryEditModel model)
+    /// <summary>
+    /// Aktualisiert einen Eintrag und liefert zurück,
+    /// ob sich fachlich tatsächlich etwas geändert hat.
+    /// </summary>
+    public bool UpdateEntry(SecretVault vault, SecretEntry entry, EntryEditModel model)
     {
         ArgumentNullException.ThrowIfNull(vault);
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(model);
 
-        entry.Title = model.Title.Trim();
+        var normalizedTitle = model.Title.Trim();
+        var normalizedUserName = model.UserName.Trim();
+        var normalizedNotes = NormalizeMultiline(model.Notes);
+        var normalizedGroupId = ResolveGroupId(vault, model.SelectedGroupPath);
+        var normalizedTags = ParseTags(model.TagsText);
+        var normalizedCustomFields = ParseCustomFields(model.CustomFieldsText);
+
+        var changed =
+            !string.Equals(entry.Title, normalizedTitle, StringComparison.Ordinal) ||
+            entry.EntryType != model.EntryType ||
+            !string.Equals(entry.UserName, normalizedUserName, StringComparison.Ordinal) ||
+            !string.Equals(entry.Secret, model.Secret, StringComparison.Ordinal) ||
+            !string.Equals(entry.Notes, normalizedNotes, StringComparison.Ordinal) ||
+            entry.GroupId != normalizedGroupId ||
+            !AreTagsEqual(entry.Tags, normalizedTags) ||
+            !AreCustomFieldsEqual(entry.CustomFields, normalizedCustomFields);
+
+        if (!changed)
+        {
+            return false;
+        }
+
+        entry.Title = normalizedTitle;
         entry.EntryType = model.EntryType;
-        entry.UserName = model.UserName.Trim();
+        entry.UserName = normalizedUserName;
         entry.Secret = model.Secret;
-        entry.Notes = NormalizeMultiline(model.Notes);
-        entry.GroupId = ResolveGroupId(vault, model.SelectedGroupPath);
+        entry.Notes = normalizedNotes;
+        entry.GroupId = normalizedGroupId;
         entry.ModifiedUtc = DateTimeOffset.UtcNow;
 
         entry.Tags.Clear();
-        ApplyTags(entry, model.TagsText);
+        entry.Tags.AddRange(normalizedTags);
 
         entry.CustomFields.Clear();
-        ApplyCustomFields(entry, model.CustomFieldsText);
+        entry.CustomFields.AddRange(normalizedCustomFields);
 
         MergeKnownTags(vault, entry.Tags);
+        return true;
     }
 
     private static Guid? ResolveGroupId(SecretVault vault, string? groupPath)
@@ -79,26 +106,39 @@ public sealed class EntryMutationService
 
     private static void ApplyTags(SecretEntry entry, string? tagsText)
     {
-        if (string.IsNullOrWhiteSpace(tagsText))
-        {
-            return;
-        }
-
-        var tags = tagsText
-            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var tag in tags)
+        foreach (var tag in ParseTags(tagsText))
         {
             entry.Tags.Add(tag);
         }
     }
 
+    private static List<string> ParseTags(string? tagsText)
+    {
+        if (string.IsNullOrWhiteSpace(tagsText))
+        {
+            return new List<string>();
+        }
+
+        return tagsText
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static void ApplyCustomFields(SecretEntry entry, string? customFieldsText)
     {
+        foreach (var field in ParseCustomFields(customFieldsText))
+        {
+            entry.CustomFields.Add(field);
+        }
+    }
+
+    private static List<CustomField> ParseCustomFields(string? customFieldsText)
+    {
+        var fields = new List<CustomField>();
         if (string.IsNullOrWhiteSpace(customFieldsText))
         {
-            return;
+            return fields;
         }
 
         var lines = customFieldsText
@@ -126,7 +166,7 @@ public sealed class EntryMutationService
                 continue;
             }
 
-            entry.CustomFields.Add(new CustomField
+            fields.Add(new CustomField
             {
                 Name = name,
                 Value = value.Trim(),
@@ -137,6 +177,8 @@ public sealed class EntryMutationService
 
             sortOrder += 10;
         }
+
+        return fields;
     }
 
     private static (string Name, string Value)? SplitCustomFieldLine(string line)
@@ -195,6 +237,49 @@ public sealed class EntryMutationService
         }
 
         return CustomFieldKind.Text;
+    }
+
+    private static bool AreTagsEqual(IReadOnlyList<string> left, IReadOnlyList<string> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Count; index++)
+        {
+            if (!string.Equals(left[index], right[index], StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool AreCustomFieldsEqual(IReadOnlyList<CustomField> left, IReadOnlyList<CustomField> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Count; index++)
+        {
+            var leftField = left[index];
+            var rightField = right[index];
+
+            if (!string.Equals(leftField.Name, rightField.Name, StringComparison.Ordinal) ||
+                !string.Equals(leftField.Value, rightField.Value, StringComparison.Ordinal) ||
+                leftField.IsSecret != rightField.IsSecret ||
+                leftField.Kind != rightField.Kind ||
+                leftField.SortOrder != rightField.SortOrder)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void MergeKnownTags(SecretVault vault, IEnumerable<string> tags)

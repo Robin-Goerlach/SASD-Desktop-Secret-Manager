@@ -44,11 +44,27 @@ public sealed class EntryMutationServiceTests
         model.TagsText = "SASD, IONOS, Deployment";
         model.Title = "IONOS Webspace FTP Bearbeitet";
 
-        service.UpdateEntry(vault, entry, model);
+        var changed = service.UpdateEntry(vault, entry, model);
 
+        Assert.True(changed);
         Assert.Equal("IONOS Webspace FTP Bearbeitet", entry.Title);
         Assert.DoesNotContain("FTP", entry.Tags);
         Assert.Contains("Deployment", entry.Tags);
         Assert.True(entry.ModifiedUtc >= oldModified);
+    }
+
+    [Fact]
+    public void UpdateEntry_ReturnsFalseWhenModelHasNoEffectiveChanges()
+    {
+        var vault = new DemoVaultFactory().CreateDemoVault();
+        var service = new EntryMutationService();
+        var entry = vault.Entries[0];
+        var oldModified = entry.ModifiedUtc;
+        var model = EntryEditModel.FromEntry(entry, "SASD-GmbH/IONOS");
+
+        var changed = service.UpdateEntry(vault, entry, model);
+
+        Assert.False(changed);
+        Assert.Equal(oldModified, entry.ModifiedUtc);
     }
 }
