@@ -7,8 +7,8 @@ namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Hauptoberfläche der Anwendung.
-/// Milestone 5 ergänzt Dirty-Tracking-Feinschliff,
-/// klare Fenstertitel und eine sauberere Aktivierung von Menü- und Toolbar-Aktionen.
+/// Milestone 6 ergänzt Gruppenverwaltung, Eintragslöschung
+/// und das Verschieben eines Eintrags in die aktuell ausgewählte Gruppe.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -19,14 +19,25 @@ public sealed class MainForm : Form
     private readonly TextBox _searchTextBox;
     private readonly Button _newEntryButton;
     private readonly Button _editEntryButton;
+    private readonly Button _deleteEntryButton;
+    private readonly Button _moveEntryButton;
+    private readonly Button _newGroupButton;
+    private readonly Button _renameGroupButton;
+    private readonly Button _deleteGroupButton;
     private readonly ToolStripMenuItem _saveVaultMenuItem;
     private readonly ToolStripMenuItem _saveVaultAsMenuItem;
     private readonly ToolStripMenuItem _newEntryMenuItem;
     private readonly ToolStripMenuItem _editEntryMenuItem;
+    private readonly ToolStripMenuItem _deleteEntryMenuItem;
+    private readonly ToolStripMenuItem _moveEntryMenuItem;
+    private readonly ToolStripMenuItem _newGroupMenuItem;
+    private readonly ToolStripMenuItem _renameGroupMenuItem;
+    private readonly ToolStripMenuItem _deleteGroupMenuItem;
 
     private readonly VaultSummaryService _summaryService = new();
     private readonly VaultQueryService _queryService = new();
     private readonly EntryMutationService _mutationService = new();
+    private readonly VaultOrganizationService _organizationService = new();
     private readonly VaultLifecycleService _vaultLifecycleService = new();
     private readonly IVaultRepository _vaultRepository = new VaultFileRepository();
 
@@ -57,10 +68,15 @@ public sealed class MainForm : Form
         _saveVaultAsMenuItem = new ToolStripMenuItem("Tresor speichern unter", null, async (_, _) => await SaveVaultAsync(saveAs: true));
         _newEntryMenuItem = new ToolStripMenuItem("Neuer Eintrag", null, (_, _) => CreateNewEntry());
         _editEntryMenuItem = new ToolStripMenuItem("Eintrag bearbeiten", null, (_, _) => EditSelectedEntry());
+        _deleteEntryMenuItem = new ToolStripMenuItem("Eintrag löschen", null, (_, _) => DeleteSelectedEntry());
+        _moveEntryMenuItem = new ToolStripMenuItem("In aktuelle Gruppe verschieben", null, (_, _) => MoveSelectedEntryToCurrentGroup());
+        _newGroupMenuItem = new ToolStripMenuItem("Neue Gruppe", null, (_, _) => CreateGroup());
+        _renameGroupMenuItem = new ToolStripMenuItem("Gruppe umbenennen", null, (_, _) => RenameSelectedGroup());
+        _deleteGroupMenuItem = new ToolStripMenuItem("Gruppe löschen", null, (_, _) => DeleteSelectedGroup());
 
         var menuStrip = BuildMenuStrip();
         var statusStrip = BuildStatusStrip();
-        _statusLabel = new ToolStripStatusLabel("Bereit. Erste UI-Shell geladen.");
+        _statusLabel = new ToolStripStatusLabel("Bereit. Organisationsfunktionen geladen.");
         statusStrip.Items.Add(_statusLabel);
 
         _groupTreeView = BuildGroupTreeView();
@@ -69,11 +85,16 @@ public sealed class MainForm : Form
         _searchTextBox = BuildSearchTextBox();
         _newEntryButton = BuildActionButton("Neuer Eintrag", (_, _) => CreateNewEntry());
         _editEntryButton = BuildActionButton("Bearbeiten", (_, _) => EditSelectedEntry());
+        _deleteEntryButton = BuildActionButton("Löschen", (_, _) => DeleteSelectedEntry());
+        _moveEntryButton = BuildActionButton("In Gruppe verschieben", (_, _) => MoveSelectedEntryToCurrentGroup());
+        _newGroupButton = BuildActionButton("Neue Gruppe", (_, _) => CreateGroup());
+        _renameGroupButton = BuildActionButton("Umbenennen", (_, _) => RenameSelectedGroup());
+        _deleteGroupButton = BuildActionButton("Löschen", (_, _) => DeleteSelectedGroup());
 
         var horizontalSplit = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            SplitterDistance = 290,
+            SplitterDistance = 320,
             BackColor = BackColor,
             FixedPanel = FixedPanel.Panel1,
         };
@@ -86,7 +107,7 @@ public sealed class MainForm : Form
             FixedPanel = FixedPanel.Panel2,
         };
 
-        horizontalSplit.Panel1.Controls.Add(WrapInPanel("Tresore, Gruppen & Tags", _groupTreeView));
+        horizontalSplit.Panel1.Controls.Add(WrapInPanel("Tresore, Gruppen & Tags", BuildGroupArea()));
         horizontalSplit.Panel2.Controls.Add(rightSplit);
         rightSplit.Panel1.Controls.Add(WrapInPanel("Einträge", BuildEntryArea()));
         rightSplit.Panel2.Controls.Add(WrapInPanel("Details", _detailsPanel));
@@ -117,8 +138,16 @@ public sealed class MainForm : Form
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(_newEntryMenuItem);
         fileMenu.DropDownItems.Add(_editEntryMenuItem);
+        fileMenu.DropDownItems.Add(_deleteEntryMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add("Beenden", null, (_, _) => Close());
+
+        var organizeMenu = new ToolStripMenuItem("Organisieren");
+        organizeMenu.DropDownItems.Add(_newGroupMenuItem);
+        organizeMenu.DropDownItems.Add(_renameGroupMenuItem);
+        organizeMenu.DropDownItems.Add(_deleteGroupMenuItem);
+        organizeMenu.DropDownItems.Add(new ToolStripSeparator());
+        organizeMenu.DropDownItems.Add(_moveEntryMenuItem);
 
         var toolsMenu = new ToolStripMenuItem("Werkzeuge");
         toolsMenu.DropDownItems.Add("Passwortgenerator", null, (_, _) => ShowInfo("Noch nicht implementiert."));
@@ -128,6 +157,7 @@ public sealed class MainForm : Form
         helpMenu.DropDownItems.Add("Über", null, (_, _) => ShowInfo("SASD Secret Manager – frühe UI-Shell auf .NET 8."));
 
         menuStrip.Items.Add(fileMenu);
+        menuStrip.Items.Add(organizeMenu);
         menuStrip.Items.Add(toolsMenu);
         menuStrip.Items.Add(helpMenu);
         return menuStrip;
@@ -255,6 +285,35 @@ public sealed class MainForm : Form
         return button;
     }
 
+    private Control BuildGroupArea()
+    {
+        var actionsPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = BackColor,
+        };
+        actionsPanel.Controls.Add(_newGroupButton);
+        actionsPanel.Controls.Add(_renameGroupButton);
+        actionsPanel.Controls.Add(_deleteGroupButton);
+
+        var container = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = BackColor,
+        };
+        container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        container.Controls.Add(actionsPanel, 0, 0);
+        container.Controls.Add(_groupTreeView, 0, 1);
+        return container;
+    }
+
     private Control BuildEntryArea()
     {
         var actionsPanel = new FlowLayoutPanel
@@ -262,12 +321,14 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Margin = new Padding(0, 0, 0, 8),
             BackColor = BackColor,
         };
         actionsPanel.Controls.Add(_newEntryButton);
         actionsPanel.Controls.Add(_editEntryButton);
+        actionsPanel.Controls.Add(_deleteEntryButton);
+        actionsPanel.Controls.Add(_moveEntryButton);
 
         var container = new TableLayoutPanel
         {
@@ -353,8 +414,7 @@ public sealed class MainForm : Form
         _groupTreeView.BeginUpdate();
         _groupTreeView.Nodes.Clear();
 
-        var groupsByParent = _currentVault.Groups
-            .ToLookup(group => group.ParentGroupId);
+        var groupsByParent = _currentVault.Groups.ToLookup(group => group.ParentGroupId);
 
         foreach (var rootGroup in groupsByParent[null].OrderBy(group => group.Name, StringComparer.OrdinalIgnoreCase))
         {
@@ -387,7 +447,7 @@ public sealed class MainForm : Form
 
     private void ApplyFiltersAndRefresh(Guid? preferredSelectionId = null)
     {
-        var selectedGroupPath = _groupTreeView.SelectedNode?.Tag as string;
+        var selectedGroupPath = GetSelectedGroupPath();
         var searchText = _searchTextBox.Text;
 
         var selectedEntryId = preferredSelectionId
@@ -463,7 +523,7 @@ public sealed class MainForm : Form
 
     private void CreateNewEntry()
     {
-        var selectedGroupPath = _groupTreeView.SelectedNode?.Tag as string;
+        var selectedGroupPath = GetSelectedGroupPath();
         var model = EntryEditModel.CreateNew(selectedGroupPath);
         var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
 
@@ -512,6 +572,188 @@ public sealed class MainForm : Form
         ApplyFiltersAndRefresh(entry.Id);
     }
 
+    private void DeleteSelectedEntry()
+    {
+        if (!TryGetSelectedEntry(out var entry))
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            $"Möchtest du den Eintrag '{entry.Title}' wirklich löschen?",
+            "SASD Secret Manager",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (result != DialogResult.Yes)
+        {
+            return;
+        }
+
+        if (!_organizationService.DeleteEntry(_currentVault, entry))
+        {
+            ShowInfo("Der ausgewählte Eintrag konnte nicht gelöscht werden.");
+            return;
+        }
+
+        DevLog.WriteLine($"Eintrag gelöscht: {entry.Title}");
+        MarkDirty();
+        ApplyFiltersAndRefresh();
+    }
+
+    private void MoveSelectedEntryToCurrentGroup()
+    {
+        if (!TryGetSelectedEntry(out var entry))
+        {
+            return;
+        }
+
+        var targetGroupPath = GetSelectedGroupPath();
+        if (string.IsNullOrWhiteSpace(targetGroupPath))
+        {
+            ShowInfo("Bitte zuerst eine Zielgruppe im TreeView auswählen.");
+            return;
+        }
+
+        var changed = _organizationService.MoveEntryToGroup(_currentVault, entry, targetGroupPath);
+        if (!changed)
+        {
+            _statusLabel.Text = $"Eintrag bereits in Gruppe: {targetGroupPath}";
+            return;
+        }
+
+        DevLog.WriteLine($"Eintrag verschoben: {entry.Title} -> {targetGroupPath}");
+        MarkDirty();
+        SelectGroupPath(targetGroupPath);
+        ApplyFiltersAndRefresh(entry.Id);
+    }
+
+    private void CreateGroup()
+    {
+        var parentGroupPath = GetSelectedGroupPath();
+        using var dialog = new GroupNameDialog(
+            title: "Neue Gruppe",
+            description: string.IsNullOrWhiteSpace(parentGroupPath)
+                ? "Neue Root-Gruppe anlegen"
+                : $"Neue Untergruppe unter:{Environment.NewLine}{parentGroupPath}",
+            initialName: string.Empty);
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var group = _organizationService.CreateGroup(_currentVault, dialog.GroupName, parentGroupPath);
+            DevLog.WriteLine($"Gruppe erstellt: {group.Path}");
+            MarkDirty();
+            BuildGroupNodesFromVault();
+            SelectGroupPath(group.Path);
+            ApplyFiltersAndRefresh();
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowInfo(exception.Message);
+        }
+    }
+
+    private void RenameSelectedGroup()
+    {
+        var selectedGroupPath = GetSelectedGroupPath();
+        if (string.IsNullOrWhiteSpace(selectedGroupPath))
+        {
+            ShowInfo("Bitte zuerst eine Gruppe auswählen.");
+            return;
+        }
+
+        var group = _currentVault.Groups.FirstOrDefault(item => string.Equals(item.Path, selectedGroupPath, StringComparison.OrdinalIgnoreCase));
+        if (group is null)
+        {
+            ShowInfo("Die ausgewählte Gruppe konnte nicht gefunden werden.");
+            return;
+        }
+
+        using var dialog = new GroupNameDialog(
+            title: "Gruppe umbenennen",
+            description: $"Aktueller Pfad:{Environment.NewLine}{group.Path}",
+            initialName: group.Name);
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var newPath = _organizationService.RenameGroup(_currentVault, selectedGroupPath, dialog.GroupName);
+            DevLog.WriteLine($"Gruppe umbenannt: {selectedGroupPath} -> {newPath}");
+            MarkDirty();
+            BuildGroupNodesFromVault();
+            SelectGroupPath(newPath);
+            ApplyFiltersAndRefresh();
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowInfo(exception.Message);
+        }
+    }
+
+    private void DeleteSelectedGroup()
+    {
+        var selectedGroupPath = GetSelectedGroupPath();
+        if (string.IsNullOrWhiteSpace(selectedGroupPath))
+        {
+            ShowInfo("Bitte zuerst eine Gruppe auswählen.");
+            return;
+        }
+
+        var group = _currentVault.Groups.FirstOrDefault(item => string.Equals(item.Path, selectedGroupPath, StringComparison.OrdinalIgnoreCase));
+        if (group is null)
+        {
+            ShowInfo("Die ausgewählte Gruppe konnte nicht gefunden werden.");
+            return;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            $"Möchtest du die Gruppe '{group.Path}' wirklich löschen?",
+            "SASD Secret Manager",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (result != DialogResult.Yes)
+        {
+            return;
+        }
+
+        var parentPath = group.ParentGroupId is Guid parentId
+            ? _currentVault.Groups.FirstOrDefault(item => item.Id == parentId)?.Path
+            : null;
+
+        try
+        {
+            _organizationService.DeleteGroup(_currentVault, selectedGroupPath);
+            DevLog.WriteLine($"Gruppe gelöscht: {selectedGroupPath}");
+            MarkDirty();
+            BuildGroupNodesFromVault();
+            if (!string.IsNullOrWhiteSpace(parentPath))
+            {
+                SelectGroupPath(parentPath);
+            }
+            else if (_groupTreeView.Nodes.Count > 0)
+            {
+                _groupTreeView.SelectedNode = _groupTreeView.Nodes[0];
+            }
+            ApplyFiltersAndRefresh();
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowInfo(exception.Message);
+        }
+    }
+
     private bool TryGetSelectedEntry(out SecretEntry entry)
     {
         if (_entryListView.SelectedItems.Count > 0 && _entryListView.SelectedItems[0].Tag is SecretEntry selectedEntry)
@@ -524,6 +766,8 @@ public sealed class MainForm : Form
         ShowInfo("Bitte zuerst einen Eintrag auswählen.");
         return false;
     }
+
+    private string? GetSelectedGroupPath() => _groupTreeView.SelectedNode?.Tag as string;
 
     private async Task CreateNewVaultAsync()
     {
@@ -692,13 +936,25 @@ public sealed class MainForm : Form
     {
         var hasVault = _currentVault is not null;
         var hasSelectedEntry = _entryListView.SelectedItems.Count > 0;
+        var hasSelectedGroup = !string.IsNullOrWhiteSpace(GetSelectedGroupPath());
 
         _saveVaultMenuItem.Enabled = hasVault && _isDirty;
         _saveVaultAsMenuItem.Enabled = hasVault;
         _newEntryMenuItem.Enabled = hasVault;
         _editEntryMenuItem.Enabled = hasSelectedEntry;
+        _deleteEntryMenuItem.Enabled = hasSelectedEntry;
+        _moveEntryMenuItem.Enabled = hasSelectedEntry && hasSelectedGroup;
+        _newGroupMenuItem.Enabled = hasVault;
+        _renameGroupMenuItem.Enabled = hasSelectedGroup;
+        _deleteGroupMenuItem.Enabled = hasSelectedGroup;
+
         _newEntryButton.Enabled = hasVault;
         _editEntryButton.Enabled = hasSelectedEntry;
+        _deleteEntryButton.Enabled = hasSelectedEntry;
+        _moveEntryButton.Enabled = hasSelectedEntry && hasSelectedGroup;
+        _newGroupButton.Enabled = hasVault;
+        _renameGroupButton.Enabled = hasSelectedGroup;
+        _deleteGroupButton.Enabled = hasSelectedGroup;
     }
 
     private string CreateSuggestedFileName()
