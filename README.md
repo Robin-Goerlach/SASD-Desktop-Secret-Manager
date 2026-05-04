@@ -122,3 +122,7 @@ Details dazu stehen in [`SECURITY.md`](SECURITY.md).
 3. Die Dokumente versionieren.
 4. Lösung und Projektdateien anlegen.
 5. Mit Domain-Modell, Security-Grundlagen und Storage-Format starten.
+
+### License
+
+This repository is licensed under the Apache License 2.0. The development repository currently lives under the personal GitHub account of Robin Goerlach. Selected release states may later be mirrored or transferred into repositories of SASD GmbH.
