@@ -1,0 +1,9 @@
+* text=auto
+*.sln text eol=crlf
+*.cs text eol=lf
+*.csproj text eol=lf
+*.md text eol=lf
+*.pdf binary
+*.docx binary
+*.png binary
+*.zip binary
