@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Bündelt alle anzuzeigenden Detailinformationen eines Eintrags für die rechte Detailansicht.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>
@@ -13,6 +20,9 @@ public sealed class EntryDetailViewModel
     public string UserName { get; init; } = string.Empty;
     public string GroupPath { get; init; } = string.Empty;
     public string Tags { get; init; } = string.Empty;
+    /// <summary>
+    /// Bereits für die Anzeige aufbereitete Tags.
+    /// </summary>
     public IReadOnlyList<string> TagItems { get; init; } = Array.Empty<string>();
     public string SecretValue { get; init; } = string.Empty;
     public string SecretPreview { get; init; } = string.Empty;
@@ -21,6 +31,9 @@ public sealed class EntryDetailViewModel
     public string PrimaryHost { get; init; } = string.Empty;
     public string PrimaryEmail { get; init; } = string.Empty;
     public string PrimaryPort { get; init; } = string.Empty;
+    /// <summary>
+    /// Zusatzfelder, wie sie im Detailbereich und in Dialogen angezeigt werden sollen.
+    /// </summary>
     public IReadOnlyList<EntryDetailFieldViewModel> CustomFields { get; init; } = Array.Empty<EntryDetailFieldViewModel>();
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset ModifiedUtc { get; init; }

@@ -1,6 +1,13 @@
 using System.Windows.Forms;
 using Sasd.SecretManager.Security;
 
+// ============================================================================
+// Dateiüberblick:
+// Anwendungseinstiegspunkt mit Debug-Initialisierung und globaler Ausnahmeverdrahtung.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 internal static class Program

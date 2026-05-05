@@ -1,6 +1,13 @@
 using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Dialog zum Erstellen und Bearbeiten von Einträgen.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
@@ -20,6 +27,9 @@ public sealed class EntryEditDialog : Form
     private readonly TextBox _customFieldsTextBox;
     private readonly CheckBox _showSecretCheckBox;
 
+    /// <summary>
+    /// Enthält nach erfolgreichem Bestätigen die vom Benutzer erfassten Daten.
+    /// </summary>
     public EntryEditModel ResultModel { get; private set; } = new();
 
     public EntryEditDialog(string title, EntryEditModel model, IReadOnlyList<string> availableGroups, IReadOnlyList<string>? knownTags = null)

@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Hält UI-nahe Regeln, die bewusst testbar in der Application-Schicht liegen, etwa Root-Verhalten und Bestätigungstexte.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>
@@ -12,6 +19,9 @@ public sealed class VaultUxPolicyService
     /// Entscheidet, ob die Oberfläche den ersten sichtbaren Eintrag automatisch auswählen soll.
     /// Auf der Root-Ebene ohne aktive Suche wird bewusst keine automatische Eintragsauswahl erzwungen,
     /// damit die Tresorübersicht ruhiger und verständlicher bleibt.
+    /// </summary>
+    /// <summary>
+    /// Entscheidet, ob die UI nach einem Kontextwechsel automatisch den ersten Eintrag selektieren soll.
     /// </summary>
     public bool ShouldAutoSelectFirstEntry(string? selectedGroupPath, string? searchText, int visibleEntryCount)
     {
@@ -26,6 +36,9 @@ public sealed class VaultUxPolicyService
 
     /// <summary>
     /// Erstellt den Text für die Statusleiste passend zum aktuellen Auswahlkontext.
+    /// </summary>
+    /// <summary>
+    /// Liefert den passenden Statuszeilentext für Root- oder Gruppenansichten.
     /// </summary>
     public string BuildSelectionStatusText(
         SecretVault vault,
@@ -55,6 +68,9 @@ public sealed class VaultUxPolicyService
 
     /// <summary>
     /// Ermittelt, wie groß die fachlichen Auswirkungen einer Gruppenverschiebung sind.
+    /// </summary>
+    /// <summary>
+    /// Berechnet, welche Untergruppen und Einträge von einer Gruppenverschiebung betroffen sind.
     /// </summary>
     public GroupMoveImpact GetGroupMoveImpact(SecretVault vault, string sourceGroupPath)
     {

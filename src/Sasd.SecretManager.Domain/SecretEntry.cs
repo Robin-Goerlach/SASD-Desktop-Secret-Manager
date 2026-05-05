@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Beschreibt einen einzelnen fachlichen Eintrag mit Kernfeldern, Tags und Zusatzfeldern.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Domain;
 
 /// <summary>

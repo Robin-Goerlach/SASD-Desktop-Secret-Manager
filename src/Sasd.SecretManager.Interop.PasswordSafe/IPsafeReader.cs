@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Definiert die spätere Reader-Schnittstelle für Password-Safe-Import.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Interop.PasswordSafe;
 
 /// <summary>

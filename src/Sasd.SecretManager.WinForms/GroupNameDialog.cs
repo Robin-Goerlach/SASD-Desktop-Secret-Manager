@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Kleiner Hilfsdialog für Gruppennamen.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
@@ -7,6 +14,9 @@ public sealed class GroupNameDialog : Form
 {
     private readonly TextBox _nameTextBox;
 
+    /// <summary>
+    /// Initialisiert den Gruppennamen-Dialog mit Titel, Beschreibung und Vorbelegung.
+    /// </summary>
     public GroupNameDialog(string title, string description, string initialName)
     {
         Text = title;

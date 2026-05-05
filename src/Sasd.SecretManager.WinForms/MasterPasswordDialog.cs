@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Security;
 
+// ============================================================================
+// Dateiüberblick:
+// Abfrage- und Warn-Dialog für Master-Passwörter.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
@@ -16,6 +23,9 @@ public sealed class MasterPasswordDialog : Form
 
     public string Password => _passwordTextBox.Text;
 
+    /// <summary>
+    /// Zeigt einen Dialog zur Eingabe oder Bestätigung eines Master-Passworts.
+    /// </summary>
     public MasterPasswordDialog(string title, string description, bool warnOnWeakPassword = false)
     {
         Text = title;

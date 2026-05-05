@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Legt den fachlichen Typ eines Zusatzfeldes fest.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Domain;
 
 /// <summary>

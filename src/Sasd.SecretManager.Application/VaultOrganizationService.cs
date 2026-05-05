@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Kapselt organisatorische Operationen wie Gruppen anlegen, umbenennen, verschieben und löschen.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>
@@ -22,6 +29,8 @@ public sealed class VaultOrganizationService
 
         EnsurePathIsUnique(vault, newPath, excludingGroupIds: null);
 
+        // Neue Gruppen erhalten sofort einen stabilen Pfad. Der Pfad ist nicht nur
+        // Anzeigeinformation, sondern wichtig für Suche, Drag & Drop und Tests.
         var group = new EntryGroup
         {
             Name = normalizedName,

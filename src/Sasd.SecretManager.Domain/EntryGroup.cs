@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Modelliert eine Gruppe innerhalb des Tresorbaums.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Domain;
 
 /// <summary>

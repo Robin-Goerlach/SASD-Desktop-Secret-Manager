@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Liefert kompakte Status- und Übersichtsinformationen für die Oberfläche.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>

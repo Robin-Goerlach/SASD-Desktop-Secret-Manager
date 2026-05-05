@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Ermittelt sichtbare Einträge und unterstützt Suche, Filterung und Sortierung.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>
@@ -11,6 +18,9 @@ public sealed class VaultQueryService
 {
     /// <summary>
     /// Liefert Einträge passend zu Gruppe, Suche und Sortierung.
+    /// </summary>
+    /// <summary>
+    /// Ermittelt die aktuell sichtbaren Einträge unter Berücksichtigung von Gruppenwahl, Suche und Sortierung.
     /// </summary>
     public IReadOnlyList<SecretEntry> GetVisibleEntries(
         SecretVault vault,

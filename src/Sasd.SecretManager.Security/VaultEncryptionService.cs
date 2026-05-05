@@ -1,5 +1,12 @@
 using System.Security.Cryptography;
 
+// ============================================================================
+// Dateiüberblick:
+// Kapselt die symmetrische Ver- und Entschlüsselung des Tresorformats.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Security;
 
 /// <summary>
@@ -11,11 +18,17 @@ public sealed class VaultEncryptionService
     public const int NonceSize = 12;
     public const int TagSize = 16;
 
+    /// <summary>
+    /// Erzeugt einen kryptografisch zufälligen Nonce für AES-GCM.
+    /// </summary>
     public byte[] CreateRandomNonce()
     {
         return RandomNumberGenerator.GetBytes(NonceSize);
     }
 
+    /// <summary>
+    /// Verschlüsselt Nutzdaten und liefert zusätzlich den Authentifizierungstag zurück.
+    /// </summary>
     public byte[] Encrypt(byte[] plainBytes, byte[] key, byte[] nonce, out byte[] tag)
     {
         ArgumentNullException.ThrowIfNull(plainBytes);
@@ -30,6 +43,9 @@ public sealed class VaultEncryptionService
         return cipherBytes;
     }
 
+    /// <summary>
+    /// Entschlüsselt einen mit AES-GCM verschlüsselten Datenblock.
+    /// </summary>
     public byte[] Decrypt(byte[] cipherBytes, byte[] key, byte[] nonce, byte[] tag)
     {
         ArgumentNullException.ThrowIfNull(cipherBytes);

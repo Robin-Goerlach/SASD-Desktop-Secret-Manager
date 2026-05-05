@@ -3,6 +3,13 @@ using Sasd.SecretManager.Domain;
 using Sasd.SecretManager.Security;
 using Sasd.SecretManager.Storage;
 
+// ============================================================================
+// Dateiüberblick:
+// Zentrale Hauptoberfläche mit TreeView, Listenansicht, Detailbereich und den wichtigsten Benutzeraktionen.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
@@ -12,8 +19,11 @@ namespace Sasd.SecretManager.WinForms;
 /// </summary>
 public sealed class MainForm : Form
 {
+    // Linke Baumansicht für Tresor, Hauptgruppen und Untergruppen.
     private readonly TreeView _groupTreeView;
+    // Mittlere Ergebnisliste mit den in der aktuellen Sicht passenden Einträgen.
     private readonly ListView _entryListView;
+    // Rechte Detailansicht für den aktuell selektierten Eintrag.
     private readonly EntryDetailsPanel _detailsPanel;
     private readonly ToolStripStatusLabel _statusLabel;
     private readonly TextBox _searchTextBox;
@@ -55,6 +65,9 @@ public sealed class MainForm : Form
     /// <summary>
     /// Initialisiert die Hauptform.
     /// </summary>
+    /// <summary>
+    /// Baut Menü, Statusleiste, Navigation, Eintragsliste und Detailbereich auf und verdrahtet alle Kernaktionen.
+    /// </summary>
     public MainForm()
     {
         Text = "SASD Secret Manager";
@@ -66,6 +79,8 @@ public sealed class MainForm : Form
         BackColor = Color.FromArgb(25, 30, 38);
         ForeColor = Color.Gainsboro;
 
+        // Die Debug-Ausgabe hilft dabei, komplexe UI-Abläufe nachzuvollziehen,
+        // ohne in produktive Persistenz oder sensible Inhalte einzugreifen.
         DevLog.WriteLine("MainForm wird aufgebaut.");
 
         _saveVaultMenuItem = new ToolStripMenuItem("Tresor speichern", null, async (_, _) => await SaveVaultAsync(saveAs: false));

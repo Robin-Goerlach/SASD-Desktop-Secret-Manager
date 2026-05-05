@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Erzeugt und aktualisiert Einträge im In-Memory-Tresor. Die Klasse kapselt Normalisierung, Tag-Verarbeitung und das Parsen freier Zusatzfelder.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>
@@ -8,6 +15,9 @@ namespace Sasd.SecretManager.Application;
 /// </summary>
 public sealed class EntryMutationService
 {
+    /// <summary>
+    /// Liefert alle vorhandenen Gruppenpfade in stabil sortierter Form für Dialoge und Auswahlfelder.
+    /// </summary>
     public IReadOnlyList<string> GetAvailableGroupPaths(SecretVault vault)
     {
         ArgumentNullException.ThrowIfNull(vault);
@@ -19,11 +29,16 @@ public sealed class EntryMutationService
             .ToArray();
     }
 
+    /// <summary>
+    /// Erzeugt aus dem Bearbeitungsmodell einen neuen Domain-Eintrag und hängt ihn in den Tresor ein.
+    /// </summary>
     public SecretEntry CreateEntry(SecretVault vault, EntryEditModel model)
     {
         ArgumentNullException.ThrowIfNull(vault);
         ArgumentNullException.ThrowIfNull(model);
 
+        // Aus dem UI-nahen Bearbeitungsmodell wird hier bewusst wieder ein
+        // fachliches Domain-Objekt aufgebaut.
         var entry = new SecretEntry
         {
             Title = model.Title.Trim(),

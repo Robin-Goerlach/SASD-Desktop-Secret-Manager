@@ -2,10 +2,23 @@ using Sasd.SecretManager.Domain;
 using Sasd.SecretManager.Storage;
 using Xunit;
 
+// ============================================================================
+// Dateiüberblick:
+// Enthält Unit-Tests zur Verifikation des beschriebenen Fach- und UI-nahen Verhaltens.
+// Die Testnamen sind sprechend gewählt und dienen zugleich als Dokumentation
+// des erwarteten Verhaltens der produktiven Klassen.
+// ============================================================================
+
 namespace Sasd.SecretManager.Storage.Tests;
 
+/// <summary>
+    /// Testklasse für VaultFileRepository und das dazugehörige erwartete Verhalten.
+    /// </summary>
 public sealed class VaultFileRepositoryTests
 {
+    /// <summary>
+    /// Verifiziert: SaveAndLoadAsync RoundtripsVaultContent.
+    /// </summary>
     [Fact]
     public async Task SaveAndLoadAsync_RoundtripsVaultContent()
     {
@@ -32,6 +45,9 @@ public sealed class VaultFileRepositoryTests
         }
     }
 
+    /// <summary>
+    /// Verifiziert: LoadAsync WithWrongPassword ThrowsVaultStorageException.
+    /// </summary>
     [Fact]
     public async Task LoadAsync_WithWrongPassword_ThrowsVaultStorageException()
     {

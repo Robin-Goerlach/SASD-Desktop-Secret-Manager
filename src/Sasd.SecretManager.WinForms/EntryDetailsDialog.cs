@@ -1,6 +1,13 @@
 using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Security;
 
+// ============================================================================
+// Dateiüberblick:
+// Stellt Detailinformationen eines Eintrags in einem separaten Dialog dar.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>

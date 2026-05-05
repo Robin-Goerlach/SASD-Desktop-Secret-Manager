@@ -2,12 +2,23 @@ using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Domain;
 using Xunit;
 
+// ============================================================================
+// Dateiüberblick:
+// Enthält Unit-Tests zur Verifikation des beschriebenen Fach- und UI-nahen Verhaltens.
+// Die Testnamen sind sprechend gewählt und dienen zugleich als Dokumentation
+// des erwarteten Verhaltens der produktiven Klassen.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application.Tests;
 
+/// <summary>
+    /// Testklasse für VaultUxPolicyService und das dazugehörige erwartete Verhalten.
+    /// </summary>
 public sealed class VaultUxPolicyServiceTests
 {
-    private readonly VaultUxPolicyService _service = new();
-
+    private readonly VaultUxPolicyService _service = new();/// <summary>
+    /// Verifiziert: ShouldAutoSelectFirstEntry ReturnsFalse OnRootWithoutSearch.
+    /// </summary>
     [Fact]
     public void ShouldAutoSelectFirstEntry_ReturnsFalse_OnRootWithoutSearch()
     {
@@ -15,6 +26,9 @@ public sealed class VaultUxPolicyServiceTests
         Assert.False(result);
     }
 
+    /// <summary>
+    /// Verifiziert: ShouldAutoSelectFirstEntry ReturnsTrue OnRootWithSearch.
+    /// </summary>
     [Fact]
     public void ShouldAutoSelectFirstEntry_ReturnsTrue_OnRootWithSearch()
     {
@@ -22,6 +36,9 @@ public sealed class VaultUxPolicyServiceTests
         Assert.True(result);
     }
 
+    /// <summary>
+    /// Verifiziert: ShouldAutoSelectFirstEntry ReturnsTrue OnConcreteGroup.
+    /// </summary>
     [Fact]
     public void ShouldAutoSelectFirstEntry_ReturnsTrue_OnConcreteGroup()
     {
@@ -29,6 +46,9 @@ public sealed class VaultUxPolicyServiceTests
         Assert.True(result);
     }
 
+    /// <summary>
+    /// Verifiziert: GetGroupMoveImpact CountsDescendantsAndEntriesInSubtree.
+    /// </summary>
     [Fact]
     public void GetGroupMoveImpact_CountsDescendantsAndEntriesInSubtree()
     {
@@ -40,6 +60,9 @@ public sealed class VaultUxPolicyServiceTests
         Assert.Equal(2, impact.EntryCount);
     }
 
+    /// <summary>
+    /// Verifiziert: BuildSelectionStatusText UsesOverviewTextOnRootWithoutSearch.
+    /// </summary>
     [Fact]
     public void BuildSelectionStatusText_UsesOverviewTextOnRootWithoutSearch()
     {

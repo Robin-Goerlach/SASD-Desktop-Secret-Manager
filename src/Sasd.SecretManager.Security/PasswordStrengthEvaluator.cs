@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Bewertet Passwörter heuristisch, um den Benutzer frühzeitig auf schwache Kennwörter hinzuweisen.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Security;
 
 /// <summary>

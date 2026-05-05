@@ -1,6 +1,13 @@
 using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Security;
 
+// ============================================================================
+// Dateiüberblick:
+// Rechte Detailansicht der Hauptoberfläche mit Copy-Aktionen und Tag-Interaktion.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
@@ -37,8 +44,14 @@ public sealed class EntryDetailsPanel : UserControl
     private EntryDetailViewModel? _currentDetails;
     private bool _showSecret;
 
+    /// <summary>
+    /// Meldet angeklickte Tags an die Hauptoberfläche zurück, damit diese sofort die Suche anpassen kann.
+    /// </summary>
     public event Action<string>? TagClicked;
 
+    /// <summary>
+    /// Baut die komplette rechte Detailansicht mit Anzeigen, Copy-Aktionen und Tag-Bereich auf.
+    /// </summary>
     public EntryDetailsPanel()
     {
         Dock = DockStyle.Fill;
@@ -106,6 +119,8 @@ public sealed class EntryDetailsPanel : UserControl
         _copyUserNameButton.Click += (_, _) => CopyValue(_currentDetails?.UserName, "Benutzername kopiert.");
 
         _copySecretButton = CreateActionButton("Kopieren");
+        // Sensible Copy-Aktionen bleiben bewusst zentral in einer Methode gebündelt,
+        // damit spätere Clipboard-Schutzlogik nur an einer Stelle geändert werden muss.
         _copySecretButton.Click += (_, _) => CopyValue(_currentDetails?.SecretValue, "Secret kopiert.");
 
         _copyUrlButton = CreateActionButton("Kopieren");
@@ -168,6 +183,9 @@ public sealed class EntryDetailsPanel : UserControl
         ClearDetails();
     }
 
+    /// <summary>
+    /// Zeigt die übergebenen Detaildaten im Panel an und blendet optionale Felder passend ein oder aus.
+    /// </summary>
     public void DisplayEntry(EntryDetailViewModel details)
     {
         ArgumentNullException.ThrowIfNull(details);
@@ -197,6 +215,9 @@ public sealed class EntryDetailsPanel : UserControl
         RefreshCustomFieldList();
     }
 
+    /// <summary>
+    /// Leert die Detailanzeige, wenn kein Eintrag mehr ausgewählt ist.
+    /// </summary>
     public void ClearDetails()
     {
         _currentDetails = null;

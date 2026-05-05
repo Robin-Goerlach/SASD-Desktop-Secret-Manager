@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Abgestufte Bewertungsklassen für Passwortqualität.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Security;
 
 /// <summary>

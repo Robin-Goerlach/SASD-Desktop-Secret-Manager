@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Security;
 
+// ============================================================================
+// Dateiüberblick:
+// Dialog zum Anlegen eines neuen Tresors.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
@@ -15,9 +22,15 @@ public sealed class NewVaultDialog : Form
     private readonly CheckBox _showPasswordCheckBox;
     private readonly Label _strengthLabel;
 
+    /// <summary>
+    /// Liefert den vom Benutzer erfassten Tresornamen.
+    /// </summary>
     public string VaultName => _nameTextBox.Text.Trim();
     public string MasterPassword => _passwordTextBox.Text;
 
+    /// <summary>
+    /// Baut den Dialog zum Anlegen eines neuen Tresors mit Namens- und Passwortabfrage auf.
+    /// </summary>
     public NewVaultDialog()
     {
         Text = "Neuen Tresor anlegen";

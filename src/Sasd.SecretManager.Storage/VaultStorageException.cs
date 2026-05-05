@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Spezielle Ausnahme für Datei-, Format- und Entschlüsselungsfehler.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Storage;
 
 /// <summary>
@@ -10,6 +17,9 @@ public sealed class VaultStorageException : Exception
     {
     }
 
+    /// <summary>
+    /// Initialisiert die Ausnahme mit einer fachlich erklärenden Nachricht und der technischen Ursache.
+    /// </summary>
     public VaultStorageException(string message, Exception innerException)
         : base(message, innerException)
     {

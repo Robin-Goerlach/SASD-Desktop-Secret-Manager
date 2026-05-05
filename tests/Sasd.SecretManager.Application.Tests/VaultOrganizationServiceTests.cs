@@ -2,12 +2,23 @@ using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Domain;
 using Xunit;
 
+// ============================================================================
+// Dateiüberblick:
+// Enthält Unit-Tests zur Verifikation des beschriebenen Fach- und UI-nahen Verhaltens.
+// Die Testnamen sind sprechend gewählt und dienen zugleich als Dokumentation
+// des erwarteten Verhaltens der produktiven Klassen.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application.Tests;
 
+/// <summary>
+    /// Testklasse für VaultOrganizationService und das dazugehörige erwartete Verhalten.
+    /// </summary>
 public sealed class VaultOrganizationServiceTests
 {
-    private readonly VaultOrganizationService _service = new();
-
+    private readonly VaultOrganizationService _service = new();/// <summary>
+    /// Verifiziert: CreateGroup CreatesNestedPath WhenParentIsGiven.
+    /// </summary>
     [Fact]
     public void CreateGroup_CreatesNestedPath_WhenParentIsGiven()
     {
@@ -20,6 +31,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.NotNull(group.ParentGroupId);
     }
 
+    /// <summary>
+    /// Verifiziert: RenameGroup UpdatesDescendantPaths.
+    /// </summary>
     [Fact]
     public void RenameGroup_UpdatesDescendantPaths()
     {
@@ -31,6 +45,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.Contains(vault.Groups, group => group.Path == "SASD-GmbH/Hosting/Mail");
     }
 
+    /// <summary>
+    /// Verifiziert: MoveGroup ToAnotherParent UpdatesDescendants.
+    /// </summary>
     [Fact]
     public void MoveGroup_ToAnotherParent_UpdatesDescendants()
     {
@@ -45,6 +62,9 @@ public sealed class VaultOrganizationServiceTests
             vault.Groups.Single(group => group.Path == "Privat/IONOS").ParentGroupId);
     }
 
+    /// <summary>
+    /// Verifiziert: MoveGroup ToRoot ClearsParentGroupId.
+    /// </summary>
     [Fact]
     public void MoveGroup_ToRoot_ClearsParentGroupId()
     {
@@ -58,6 +78,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.Contains(vault.Groups, group => group.Path == "IONOS/Mail");
     }
 
+    /// <summary>
+    /// Verifiziert: MoveGroup Throws WhenTargetIsDescendant.
+    /// </summary>
     [Fact]
     public void MoveGroup_Throws_WhenTargetIsDescendant()
     {
@@ -69,6 +92,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.Contains("Untergruppe", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Verifiziert: MoveGroup ReturnsNull WhenPositionDoesNotChange.
+    /// </summary>
     [Fact]
     public void MoveGroup_ReturnsNull_WhenPositionDoesNotChange()
     {
@@ -79,6 +105,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.Null(newPath);
     }
 
+    /// <summary>
+    /// Verifiziert: DeleteGroup Throws WhenEntriesStillExist.
+    /// </summary>
     [Fact]
     public void DeleteGroup_Throws_WhenEntriesStillExist()
     {
@@ -89,6 +118,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.Contains("Einträge", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Verifiziert: MoveEntryToGroup ChangesGroupId.
+    /// </summary>
     [Fact]
     public void MoveEntryToGroup_ChangesGroupId()
     {
@@ -102,6 +134,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.Equal(archive.Id, entry.GroupId);
     }
 
+    /// <summary>
+    /// Verifiziert: MoveEntryToGroup ReturnsFalse WhenEntryAlreadyInTargetGroup.
+    /// </summary>
     [Fact]
     public void MoveEntryToGroup_ReturnsFalse_WhenEntryAlreadyInTargetGroup()
     {
@@ -113,6 +148,9 @@ public sealed class VaultOrganizationServiceTests
         Assert.False(changed);
     }
 
+    /// <summary>
+    /// Verifiziert: DeleteEntry RemovesEntryFromVault.
+    /// </summary>
     [Fact]
     public void DeleteEntry_RemovesEntryFromVault()
     {

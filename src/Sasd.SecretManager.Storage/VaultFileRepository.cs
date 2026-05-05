@@ -4,6 +4,13 @@ using System.Text.Json;
 using Sasd.SecretManager.Domain;
 using Sasd.SecretManager.Security;
 
+// ============================================================================
+// Dateiüberblick:
+// Implementiert das Lesen und Schreiben des internen verschlüsselten .svault-Formats.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Storage;
 
 /// <summary>
@@ -21,6 +28,9 @@ public sealed class VaultFileRepository : IVaultRepository
     private readonly VaultKeyDerivationService _keyDerivationService = new();
     private readonly VaultEncryptionService _encryptionService = new();
 
+    /// <summary>
+    /// Lädt einen Tresor aus dem internen Dateiformat, validiert den Container und entschlüsselt die Nutzdaten.
+    /// </summary>
     public async Task<SecretVault> LoadAsync(string filePath, string masterPassword, CancellationToken cancellationToken = default)
     {
         ValidateFilePath(filePath);
@@ -33,6 +43,9 @@ public sealed class VaultFileRepository : IVaultRepository
 
         try
         {
+            // Ab hier wird streng zwischen Dateihülle, Krypto-Material und eigentlichem
+            // Fachobjekt unterschieden. Das erleichtert spätere Formatmigrationen.
+            // Die komplette Datei wird zunächst als technischer Container gelesen.
             await using var stream = File.OpenRead(filePath);
             var container = await JsonSerializer.DeserializeAsync<VaultFileContainer>(stream, JsonOptions, cancellationToken)
                 ?? throw new VaultStorageException("Die Tresordatei konnte nicht gelesen werden.");
@@ -71,6 +84,9 @@ public sealed class VaultFileRepository : IVaultRepository
         }
     }
 
+    /// <summary>
+    /// Speichert den Tresor atomar als verschlüsselte .svault-Datei und legt bei Bedarf Sicherungskopien an.
+    /// </summary>
     public async Task SaveAsync(SecretVault vault, string filePath, string masterPassword, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(vault);

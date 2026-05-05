@@ -1,6 +1,13 @@
 using System.Diagnostics;
 using System.Text;
 
+// ============================================================================
+// Dateiüberblick:
+// Zentrale Entwicklungs- und Diagnoseausgabe für Debug-Sessions.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Security;
 
 /// <summary>

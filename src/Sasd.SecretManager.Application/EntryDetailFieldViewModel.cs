@@ -1,3 +1,10 @@
+// ============================================================================
+// Dateiüberblick:
+// Beschreibt ein einzelnes Feld für die Detailansicht eines Eintrags. Die ViewModel-Schicht formatiert Domain-Daten so, dass die UI keine Fachlogik kennen muss.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>

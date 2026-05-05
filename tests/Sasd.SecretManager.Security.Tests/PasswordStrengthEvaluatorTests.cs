@@ -1,10 +1,23 @@
 using Sasd.SecretManager.Security;
 using Xunit;
 
+// ============================================================================
+// Dateiüberblick:
+// Enthält Unit-Tests zur Verifikation des beschriebenen Fach- und UI-nahen Verhaltens.
+// Die Testnamen sind sprechend gewählt und dienen zugleich als Dokumentation
+// des erwarteten Verhaltens der produktiven Klassen.
+// ============================================================================
+
 namespace Sasd.SecretManager.Security.Tests;
 
+/// <summary>
+    /// Testklasse für PasswordStrengthEvaluator und das dazugehörige erwartete Verhalten.
+    /// </summary>
 public sealed class PasswordStrengthEvaluatorTests
 {
+    /// <summary>
+    /// Verifiziert: Assess ReturnsVeryWeakForShortSimplePassword.
+    /// </summary>
     [Fact]
     public void Assess_ReturnsVeryWeakForShortSimplePassword()
     {
@@ -14,6 +27,9 @@ public sealed class PasswordStrengthEvaluatorTests
         Assert.True(result.ShouldWarnBeforeUse);
     }
 
+    /// <summary>
+    /// Verifiziert: Assess ReturnsStrongForLongMixedPassword.
+    /// </summary>
     [Fact]
     public void Assess_ReturnsStrongForLongMixedPassword()
     {

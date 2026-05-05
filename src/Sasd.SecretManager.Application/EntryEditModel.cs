@@ -1,5 +1,12 @@
 using Sasd.SecretManager.Domain;
 
+// ============================================================================
+// Dateiüberblick:
+// Hält die editierbaren Daten eines Eintrags unabhängig von konkreten Steuerelementen.
+// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
+// Orientierungshinweise, ohne die fachliche Logik zu verändern.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application;
 
 /// <summary>
@@ -17,6 +24,10 @@ public sealed class EntryEditModel
     public string Notes { get; set; } = string.Empty;
     public string CustomFieldsText { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Erzeugt ein leeres Bearbeitungsmodell für einen neuen Eintrag.
+    /// </summary>
+    /// <param name="preferredGroupPath">Vorbelegung für die Zielgruppe, wenn der Einstieg aus einer Gruppe heraus erfolgt.</param>
     public static EntryEditModel CreateNew(string? preferredGroupPath)
     {
         return new EntryEditModel
@@ -26,6 +37,11 @@ public sealed class EntryEditModel
         };
     }
 
+    /// <summary>
+    /// Baut aus einem bestehenden Domain-Eintrag ein Bearbeitungsmodell für den Dialog.
+    /// </summary>
+    /// <param name="entry">Zu bearbeitender Domain-Eintrag.</param>
+    /// <param name="groupPath">Aktueller Gruppenpfad des Eintrags.</param>
     public static EntryEditModel FromEntry(SecretEntry entry, string? groupPath)
     {
         ArgumentNullException.ThrowIfNull(entry);

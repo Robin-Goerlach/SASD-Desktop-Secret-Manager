@@ -2,10 +2,23 @@ using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Domain;
 using Xunit;
 
+// ============================================================================
+// Dateiüberblick:
+// Enthält Unit-Tests zur Verifikation des beschriebenen Fach- und UI-nahen Verhaltens.
+// Die Testnamen sind sprechend gewählt und dienen zugleich als Dokumentation
+// des erwarteten Verhaltens der produktiven Klassen.
+// ============================================================================
+
 namespace Sasd.SecretManager.Application.Tests;
 
+/// <summary>
+    /// Testklasse für EntryMutationService und das dazugehörige erwartete Verhalten.
+    /// </summary>
 public sealed class EntryMutationServiceTests
 {
+    /// <summary>
+    /// Verifiziert: CreateEntry AddsEntryTagsAndCustomFields.
+    /// </summary>
     [Fact]
     public void CreateEntry_AddsEntryTagsAndCustomFields()
     {
@@ -34,6 +47,9 @@ public sealed class EntryMutationServiceTests
         Assert.True(entry.CustomFields[1].IsSecret);
     }
 
+    /// <summary>
+    /// Verifiziert: UpdateEntry ReplacesTagsAndChangesModifiedTimestamp.
+    /// </summary>
     [Fact]
     public void UpdateEntry_ReplacesTagsAndChangesModifiedTimestamp()
     {
@@ -55,6 +71,9 @@ public sealed class EntryMutationServiceTests
         Assert.True(entry.ModifiedUtc >= oldModified);
     }
 
+    /// <summary>
+    /// Verifiziert: UpdateEntry ReturnsFalseWhenModelHasNoEffectiveChanges.
+    /// </summary>
     [Fact]
     public void UpdateEntry_ReturnsFalseWhenModelHasNoEffectiveChanges()
     {
