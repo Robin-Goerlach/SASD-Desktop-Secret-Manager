@@ -38,6 +38,7 @@ public sealed class MainForm : Form
     private readonly ContextMenuStrip _entryContextMenu;
 
     private readonly VaultSummaryService _summaryService = new();
+    private readonly VaultUxPolicyService _uxPolicyService = new();
     private readonly VaultQueryService _queryService = new();
     private readonly EntryMutationService _mutationService = new();
     private readonly VaultOrganizationService _organizationService = new();
@@ -341,7 +342,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 44,
             ForeColor = Color.Silver,
-            Text = "Tipp: Rechtsklick auf den Tresor oder auf eine Gruppe für Aktionen. Einträge und Gruppen lassen sich per Drag &amp; Drop neu anordnen.",
+            Text = "Tipp: Rechtsklick auf den Tresor oder auf eine Gruppe für Aktionen. Einträge und Gruppen lassen sich per Drag & Drop neu anordnen.",
             Padding = new Padding(0, 0, 0, 8),
         };
 
@@ -378,7 +379,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 24,
             ForeColor = Color.Silver,
-            Text = "Weitere Aktionen findest du über die Menüleiste oder per Rechtsklick. Einträge lassen sich per Drag &amp; Drop auf Gruppen verschieben.",
+            Text = "Weitere Aktionen findest du über die Menüleiste oder per Rechtsklick. Einträge lassen sich per Drag & Drop auf Gruppen verschieben.",
             Padding = new Padding(0, 0, 0, 6),
         };
 
@@ -571,20 +572,23 @@ public sealed class MainForm : Form
             ?? (_entryListView.SelectedItems.Count > 0 ? ((SecretEntry)_entryListView.SelectedItems[0].Tag!).Id : Guid.Empty);
 
         var visibleEntries = _queryService.GetVisibleEntries(_currentVault, selectedGroupPath, searchText, _sortColumn, _sortAscending);
-        RefreshEntryList(visibleEntries, selectedEntryId);
+        var allowAutoSelection = _uxPolicyService.ShouldAutoSelectFirstEntry(selectedGroupPath, searchText, visibleEntries.Count);
+        RefreshEntryList(visibleEntries, selectedEntryId, allowAutoSelection);
 
-        var groupLabel = string.IsNullOrWhiteSpace(selectedGroupPath) ? "Alle Gruppen" : selectedGroupPath;
-        var searchLabel = string.IsNullOrWhiteSpace(searchText) ? string.Empty : $" · Suche: {searchText}";
-        var sortDirection = _sortAscending ? "aufsteigend" : "absteigend";
-        var dirtyLabel = _isDirty ? " · ungespeichert" : string.Empty;
-        var fileLabel = string.IsNullOrWhiteSpace(_currentVaultFilePath)
-            ? " · ohne Datei"
-            : $" · Datei: {Path.GetFileName(_currentVaultFilePath)}";
-        _statusLabel.Text = $"{groupLabel} · {visibleEntries.Count} Einträge · Sortierung Spalte {_sortColumn + 1} ({sortDirection}){searchLabel}{fileLabel}{dirtyLabel}";
+        _statusLabel.Text = _uxPolicyService.BuildSelectionStatusText(
+            _currentVault,
+            selectedGroupPath,
+            visibleEntries.Count,
+            _sortColumn,
+            _sortAscending,
+            searchText,
+            _currentVaultFilePath,
+            _isDirty);
+
         UpdateUiState();
     }
 
-    private void RefreshEntryList(IReadOnlyList<SecretEntry> entries, Guid selectedEntryId)
+    private void RefreshEntryList(IReadOnlyList<SecretEntry> entries, Guid selectedEntryId, bool allowAutoSelection)
     {
         _entryListView.BeginUpdate();
         _entryListView.Items.Clear();
@@ -609,17 +613,25 @@ public sealed class MainForm : Form
 
         _entryListView.EndUpdate();
 
-        if (itemToSelect is not null)
+        if (allowAutoSelection)
         {
-            itemToSelect.Selected = true;
-            itemToSelect.EnsureVisible();
-        }
-        else if (_entryListView.Items.Count > 0)
-        {
-            _entryListView.Items[0].Selected = true;
+            if (itemToSelect is not null)
+            {
+                itemToSelect.Selected = true;
+                itemToSelect.EnsureVisible();
+            }
+            else if (_entryListView.Items.Count > 0)
+            {
+                _entryListView.Items[0].Selected = true;
+            }
+            else
+            {
+                _detailsPanel.ClearDetails();
+            }
         }
         else
         {
+            _entryListView.SelectedItems.Clear();
             _detailsPanel.ClearDetails();
         }
 
@@ -648,7 +660,7 @@ public sealed class MainForm : Form
         }
 
         _statusLabel.Text = $"Eintrag wird verschoben: {entry.Title}";
-        DevLog.WriteLine($"Drag &amp; Drop gestartet: {entry.Title}");
+        DevLog.WriteLine($"Drag & Drop gestartet: {entry.Title}");
 
         var data = new DataObject(typeof(SecretEntry).FullName!, entry);
         _entryListView.DoDragDrop(data, DragDropEffects.Move);
@@ -662,7 +674,7 @@ public sealed class MainForm : Form
         }
 
         _statusLabel.Text = $"Gruppe wird verschoben: {sourceGroupPath}";
-        DevLog.WriteLine($"Gruppen-Drag &amp; Drop gestartet: {sourceGroupPath}");
+        DevLog.WriteLine($"Gruppen-Drag & Drop gestartet: {sourceGroupPath}");
 
         var data = new DataObject(GroupPathDataFormat, sourceGroupPath);
         _groupTreeView.DoDragDrop(data, DragDropEffects.Move);
@@ -736,7 +748,7 @@ public sealed class MainForm : Form
                 return;
             }
 
-            DevLog.WriteLine($"Eintrag per Drag &amp; Drop verschoben: {entry.Title} -> {targetGroupPath}");
+            DevLog.WriteLine($"Eintrag per Drag & Drop verschoben: {entry.Title} -> {targetGroupPath}");
             MarkDirty();
             SelectGroupPath(targetGroupPath);
             ApplyFiltersAndRefresh(entry.Id);
@@ -755,6 +767,31 @@ public sealed class MainForm : Form
 
             try
             {
+                var targetLabel = string.IsNullOrWhiteSpace(targetParentPath) ? "oberste Ebene" : targetParentPath;
+                var moveImpact = _uxPolicyService.GetGroupMoveImpact(_currentVault, sourceGroupPath);
+
+                if (_uxPolicyService.ShouldConfirmGroupMove(moveImpact.ChildGroupCount, moveImpact.EntryCount))
+                {
+                    var message = _uxPolicyService.BuildGroupMoveConfirmationMessage(
+                        sourceGroupPath,
+                        targetLabel,
+                        moveImpact.ChildGroupCount,
+                        moveImpact.EntryCount);
+
+                    var confirmResult = MessageBox.Show(
+                        this,
+                        message,
+                        "SASD Secret Manager",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (confirmResult != DialogResult.Yes)
+                    {
+                        _statusLabel.Text = "Gruppenverschiebung abgebrochen.";
+                        return;
+                    }
+                }
+
                 var newPath = _organizationService.MoveGroup(_currentVault, sourceGroupPath, targetParentPath);
                 if (string.IsNullOrWhiteSpace(newPath))
                 {
@@ -762,8 +799,7 @@ public sealed class MainForm : Form
                     return;
                 }
 
-                var targetLabel = string.IsNullOrWhiteSpace(targetParentPath) ? "oberste Ebene" : targetParentPath;
-                DevLog.WriteLine($"Gruppe per Drag &amp; Drop verschoben: {sourceGroupPath} -> {targetLabel}");
+                DevLog.WriteLine($"Gruppe per Drag & Drop verschoben: {sourceGroupPath} -> {targetLabel}");
                 MarkDirty();
                 BuildGroupNodesFromVault();
                 SelectGroupPath(newPath);
