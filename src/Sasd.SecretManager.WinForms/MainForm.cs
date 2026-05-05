@@ -7,7 +7,7 @@ namespace Sasd.SecretManager.WinForms;
 
 /// <summary>
 /// Hauptoberfläche der Anwendung.
-/// Aktueller Stand: Root-aware Organisation, Kontextmenüs und Drag & Drop
+/// Aktueller Stand: Root-aware Organisation, Kontextmenüs und Drag &amp; Drop
 /// für Einträge und Gruppen im TreeView.
 /// </summary>
 public sealed class MainForm : Form
@@ -341,7 +341,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 44,
             ForeColor = Color.Silver,
-            Text = "Tipp: Rechtsklick auf den Tresor oder auf eine Gruppe für Aktionen. Einträge und Gruppen lassen sich per Drag & Drop neu anordnen.",
+            Text = "Tipp: Rechtsklick auf den Tresor oder auf eine Gruppe für Aktionen. Einträge und Gruppen lassen sich per Drag &amp; Drop neu anordnen.",
             Padding = new Padding(0, 0, 0, 8),
         };
 
@@ -378,7 +378,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Top,
             Height = 24,
             ForeColor = Color.Silver,
-            Text = "Weitere Aktionen findest du über die Menüleiste oder per Rechtsklick. Einträge lassen sich per Drag & Drop auf Gruppen verschieben.",
+            Text = "Weitere Aktionen findest du über die Menüleiste oder per Rechtsklick. Einträge lassen sich per Drag &amp; Drop auf Gruppen verschieben.",
             Padding = new Padding(0, 0, 0, 6),
         };
 
@@ -648,7 +648,7 @@ public sealed class MainForm : Form
         }
 
         _statusLabel.Text = $"Eintrag wird verschoben: {entry.Title}";
-        DevLog.WriteLine($"Drag & Drop gestartet: {entry.Title}");
+        DevLog.WriteLine($"Drag &amp; Drop gestartet: {entry.Title}");
 
         var data = new DataObject(typeof(SecretEntry).FullName!, entry);
         _entryListView.DoDragDrop(data, DragDropEffects.Move);
@@ -662,7 +662,7 @@ public sealed class MainForm : Form
         }
 
         _statusLabel.Text = $"Gruppe wird verschoben: {sourceGroupPath}";
-        DevLog.WriteLine($"Gruppen-Drag & Drop gestartet: {sourceGroupPath}");
+        DevLog.WriteLine($"Gruppen-Drag &amp; Drop gestartet: {sourceGroupPath}");
 
         var data = new DataObject(GroupPathDataFormat, sourceGroupPath);
         _groupTreeView.DoDragDrop(data, DragDropEffects.Move);
@@ -736,7 +736,7 @@ public sealed class MainForm : Form
                 return;
             }
 
-            DevLog.WriteLine($"Eintrag per Drag & Drop verschoben: {entry.Title} -> {targetGroupPath}");
+            DevLog.WriteLine($"Eintrag per Drag &amp; Drop verschoben: {entry.Title} -> {targetGroupPath}");
             MarkDirty();
             SelectGroupPath(targetGroupPath);
             ApplyFiltersAndRefresh(entry.Id);
@@ -763,7 +763,7 @@ public sealed class MainForm : Form
                 }
 
                 var targetLabel = string.IsNullOrWhiteSpace(targetParentPath) ? "oberste Ebene" : targetParentPath;
-                DevLog.WriteLine($"Gruppe per Drag & Drop verschoben: {sourceGroupPath} -> {targetLabel}");
+                DevLog.WriteLine($"Gruppe per Drag &amp; Drop verschoben: {sourceGroupPath} -> {targetLabel}");
                 MarkDirty();
                 BuildGroupNodesFromVault();
                 SelectGroupPath(newPath);
