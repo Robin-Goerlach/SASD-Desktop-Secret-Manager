@@ -53,6 +53,7 @@ public sealed class MainForm : Form
     private readonly EntryMutationService _mutationService = new();
     private readonly VaultOrganizationService _organizationService = new();
     private readonly VaultLifecycleService _vaultLifecycleService = new();
+    private readonly UnsavedChangesGuardService _unsavedChangesGuardService = new();
     private readonly IVaultRepository _vaultRepository = new VaultFileRepository();
 
     private SecretVault _currentVault = new();
@@ -61,6 +62,7 @@ public sealed class MainForm : Form
     private bool _isDirty;
     private int _sortColumn;
     private bool _sortAscending = true;
+    private bool _closeRequestedFromMenu;
 
     /// <summary>
     /// Initialisiert die Hauptform.
@@ -159,7 +161,7 @@ public sealed class MainForm : Form
         fileMenu.DropDownItems.Add(_saveVaultMenuItem);
         fileMenu.DropDownItems.Add(_saveVaultAsMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
-        fileMenu.DropDownItems.Add("Beenden", null, (_, _) => Close());
+        fileMenu.DropDownItems.Add("Beenden", null, (_, _) => RequestApplicationClose());
 
         var entryMenu = new ToolStripMenuItem("Eintrag");
         entryMenu.DropDownItems.Add(_newEntryMenuItem);
@@ -1160,7 +1162,7 @@ public sealed class MainForm : Form
 
     private async Task CreateNewVaultAsync()
     {
-        if (!await ConfirmDiscardOrSaveIfDirtyAsync())
+        if (!await ConfirmDiscardOrSaveIfDirtyAsync(UnsavedChangesNavigationAction.CreateNewVault))
         {
             return;
         }
@@ -1179,7 +1181,7 @@ public sealed class MainForm : Form
 
     private async Task OpenVaultAsync()
     {
-        if (!await ConfirmDiscardOrSaveIfDirtyAsync())
+        if (!await ConfirmDiscardOrSaveIfDirtyAsync(UnsavedChangesNavigationAction.OpenVault))
         {
             return;
         }
@@ -1277,31 +1279,62 @@ public sealed class MainForm : Form
         }
     }
 
-    private async Task<bool> ConfirmDiscardOrSaveIfDirtyAsync()
+    /// <summary>
+    /// Fragt vor einer riskanten Navigation nach, ob ungespeicherte Änderungen gespeichert werden sollen.
+    /// </summary>
+    /// <param name="action">Die aktuell angeforderte Aktion, zum Beispiel Neu, Öffnen oder Beenden.</param>
+    /// <returns><see langword="true"/>, wenn die Aktion fortgesetzt werden darf; andernfalls <see langword="false"/>.</returns>
+    private async Task<bool> ConfirmDiscardOrSaveIfDirtyAsync(UnsavedChangesNavigationAction action)
     {
-        if (!_isDirty)
+        if (!_unsavedChangesGuardService.RequiresConfirmation(_isDirty))
         {
             return true;
         }
 
+        var message = _unsavedChangesGuardService.BuildConfirmationMessage(_currentVault.Name, action);
         var result = MessageBox.Show(
             this,
-            "Der aktuelle Tresor enthält ungespeicherte Änderungen. Möchtest du ihn vor dem Fortfahren speichern?",
+            message,
             "SASD Secret Manager",
             MessageBoxButtons.YesNoCancel,
             MessageBoxIcon.Question);
 
-        if (result == DialogResult.Cancel)
+        var choice = result switch
         {
+            DialogResult.Yes => UnsavedChangesPromptChoice.Save,
+            DialogResult.No => UnsavedChangesPromptChoice.Discard,
+            _ => UnsavedChangesPromptChoice.Cancel,
+        };
+
+        var decision = _unsavedChangesGuardService.Evaluate(_isDirty, choice);
+        if (decision == UnsavedChangesGuardDecision.Cancel)
+        {
+            SetStatus("Aktion abgebrochen. Ungespeicherte Änderungen bleiben erhalten.");
             return false;
         }
 
-        if (result == DialogResult.No)
+        if (decision == UnsavedChangesGuardDecision.SaveBeforeContinuing)
         {
-            return true;
+            var saved = await SaveVaultAsync(saveAs: false);
+            if (!saved)
+            {
+                SetStatus("Speichern abgebrochen. Der aktuelle Tresor bleibt geöffnet.");
+            }
+
+            return saved;
         }
 
-        return await SaveVaultAsync(saveAs: false);
+        SetStatus("Fortfahren ohne Speichern bestätigt.");
+        return true;
+    }
+
+    /// <summary>
+    /// Merkt den expliziten Beenden-Wunsch aus dem Menü vor und löst das normale Schließen der Form aus.
+    /// </summary>
+    private void RequestApplicationClose()
+    {
+        _closeRequestedFromMenu = true;
+        Close();
     }
 
     private void MarkDirty()
@@ -1410,12 +1443,23 @@ public sealed class MainForm : Form
 
     protected override async void OnFormClosing(FormClosingEventArgs e)
     {
-        if (!await ConfirmDiscardOrSaveIfDirtyAsync())
-        {
-            e.Cancel = true;
-            return;
-        }
+        var action = _closeRequestedFromMenu
+            ? UnsavedChangesNavigationAction.ExitApplication
+            : UnsavedChangesNavigationAction.CloseWindow;
 
-        base.OnFormClosing(e);
+        try
+        {
+            if (!await ConfirmDiscardOrSaveIfDirtyAsync(action))
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            base.OnFormClosing(e);
+        }
+        finally
+        {
+            _closeRequestedFromMenu = false;
+        }
     }
 }
