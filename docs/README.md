@@ -1,26 +1,41 @@
 # Dokumentenübersicht
 
-Dieses Verzeichnis bündelt die bisher erarbeiteten fachlichen und technischen Grundlagen des Projekts.
+Dieses Verzeichnis bündelt die fachlichen, organisatorischen und technischen Grundlagen des Projekts.
+Die Dokumente ergänzen den Quellcode und helfen dabei, Zielbild, Architektur, Sicherheitsgrenzen und den geplanten Ausbau nachvollziehbar zu halten.
 
 ## Inhalt
 
-- `lastenheft/`  
-  Fachliche Sicht, Zielbild, Anforderungen, Abgrenzungen und Rahmenbedingungen.
+- `lastenheft/`
+  - fachliche Sicht auf Zielbild, Anforderungen, Abgrenzungen und Rahmenbedingungen
+- `pflichtenheft/`
+  - konkrete Umsetzungs- und Lösungsbeschreibung zur Realisierung der Anforderungen
+- `architektur/`
+  - technische Struktur, Schichten, Laufzeitsicht und Architekturentscheidungen
+- `decisions/`
+  - kurze Architekturentscheidungen im ADR-Stil für wichtige Grundsatzfragen
+- `roadmap.md`
+  - geplanter Ausbaupfad von den aktuellen Milestones bis zu einem runden V1-/V1.x-/V2-Stand
+- `repository-strategy.md`
+  - Einordnung der Repository-Strategie zwischen persönlichem Entwicklungsstand und späterer Release-Spiegelung
+- `repository-metadata.md`
+  - Vorschläge für Außendarstellung, Kurzbeschreibung, Topics und Metadaten
 
-- `pflichtenheft/`  
-  Konkretere Umsetzungs- und Lösungsbeschreibung zur Realisierung der Anforderungen.
+## Dokumentationsprinzip
 
-- `architektur/`  
-  Kombiniertes Lastenheft-/Architektur-Dokument als übergreifende Referenz für Struktur, Schichten und technische Leitentscheidungen.
+Die Dokumente sollen nicht nur fertige Entscheidungen festhalten, sondern auch:
 
-- `decisions/`  
-  Kurze Architekturentscheidungen (ADR-Stil) für wichtige Grundsatzfragen.
+- bewusst vertagte Themen dokumentieren,
+- verworfene Ideen mit Begründung festhalten,
+- den Versionsbezug zwischen V1, V1.x, V2 und späteren Ausbaustufen sichtbar machen,
+- Architektur und Code-Stand konsistent begleiten.
 
-- `roadmap.md`  
-  Gestufter Release-Schnitt für V1, V1.x und V2.0.
+## Hinweis zum aktuellen Stand
 
-- `repository-strategy.md`  
-  Persönliches Entwicklungs-Repository jetzt, saubere Release-Spiegelung später.
+Der Code im Repository ist ein aktiver Entwicklungsstand mit bereits umgesetzten Kernfunktionen, aber noch nicht der vollständige V1-Endstand eines produktiv freigegebenen Sicherheitsprodukts.
+Die Dokumente unterscheiden deshalb bewusst zwischen:
 
-- `repository-metadata.md`  
-  Vorschläge für Name, Kurzbeschreibung, Topics und Außendarstellung.
+- **bereits umgesetzt**,
+- **teilweise umgesetzt**,
+- **geplant**,
+- **bewusst vertagt**,
+- **derzeit nicht Ziel**.
