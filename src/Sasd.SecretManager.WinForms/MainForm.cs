@@ -104,6 +104,7 @@ public sealed class MainForm : Form
         _groupTreeView = BuildGroupTreeView();
         _entryListView = BuildEntryListView();
         _detailsPanel = new EntryDetailsPanel();
+        _detailsPanel.StatusMessageRequested += message => SetStatus(message);
         _searchTextBox = BuildSearchTextBox();
         _newEntryButton = BuildActionButton("Neuer Eintrag", (_, _) => CreateNewEntry());
         _editEntryButton = BuildActionButton("Bearbeiten", (_, _) => EditSelectedEntry());
@@ -195,6 +196,20 @@ public sealed class MainForm : Form
         BackColor = Color.FromArgb(18, 22, 29),
         ForeColor = Color.Gainsboro,
     };
+
+    /// <summary>
+    /// Aktualisiert die Statusleiste, wenn eine nicht-leere Meldung vorliegt.
+    /// </summary>
+    /// <param name="message">Die anzuzeigende Statusmeldung.</param>
+    private void SetStatus(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        _statusLabel.Text = message;
+    }
 
     private TreeView BuildGroupTreeView()
     {

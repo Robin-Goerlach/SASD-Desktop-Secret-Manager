@@ -1,5 +1,6 @@
 using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Security;
+using UiTimer = System.Windows.Forms.Timer;
 
 // ============================================================================
 // Dateiüberblick:
@@ -40,14 +41,23 @@ public sealed class EntryDetailsPanel : UserControl
     private readonly Control _hostFieldContainer;
     private readonly Control _emailFieldContainer;
     private readonly Control _portFieldContainer;
+    private readonly ClipboardProtectionService _clipboardProtectionService;
+    private readonly UiTimer _clipboardClearTimer;
 
     private EntryDetailViewModel? _currentDetails;
     private bool _showSecret;
+    private string? _pendingSensitiveClipboardValue;
+    private ClipboardCopyPolicy? _pendingClipboardPolicy;
 
     /// <summary>
     /// Meldet angeklickte Tags an die Hauptoberfläche zurück, damit diese sofort die Suche anpassen kann.
     /// </summary>
     public event Action<string>? TagClicked;
+
+    /// <summary>
+    /// Meldet Status- oder Feedback-Texte an die Hauptoberfläche zurück.
+    /// </summary>
+    public event Action<string>? StatusMessageRequested;
 
     /// <summary>
     /// Baut die komplette rechte Detailansicht mit Anzeigen, Copy-Aktionen und Tag-Bereich auf.
@@ -112,25 +122,32 @@ public sealed class EntryDetailsPanel : UserControl
         _customFieldsListView.Columns.Add("Typ", 120);
         _customFieldsListView.DoubleClick += (_, _) => CopySelectedCustomField();
 
+        _clipboardProtectionService = new ClipboardProtectionService();
+        _clipboardClearTimer = new UiTimer
+        {
+            Interval = 1000,
+        };
+        _clipboardClearTimer.Tick += (_, _) => TryClearClipboard();
+
         _toggleSecretButton = CreateActionButton("Anzeigen");
         _toggleSecretButton.Click += (_, _) => ToggleSecretVisibility();
 
         _copyUserNameButton = CreateActionButton("Kopieren");
-        _copyUserNameButton.Click += (_, _) => CopyValue(_currentDetails?.UserName, "Benutzername kopiert.");
+        _copyUserNameButton.Click += (_, _) => CopyValue(_currentDetails?.UserName, ClipboardCopyKind.UserName);
 
         _copySecretButton = CreateActionButton("Kopieren");
         // Sensible Copy-Aktionen bleiben bewusst zentral in einer Methode gebündelt,
         // damit spätere Clipboard-Schutzlogik nur an einer Stelle geändert werden muss.
-        _copySecretButton.Click += (_, _) => CopyValue(_currentDetails?.SecretValue, "Secret kopiert.");
+        _copySecretButton.Click += (_, _) => CopyValue(_currentDetails?.SecretValue, ClipboardCopyKind.Secret);
 
         _copyUrlButton = CreateActionButton("Kopieren");
-        _copyUrlButton.Click += (_, _) => CopyValue(_currentDetails?.PrimaryUrl, "URL kopiert.");
+        _copyUrlButton.Click += (_, _) => CopyValue(_currentDetails?.PrimaryUrl, ClipboardCopyKind.Url);
 
         _copyHostButton = CreateActionButton("Kopieren");
-        _copyHostButton.Click += (_, _) => CopyValue(_currentDetails?.PrimaryHost, "Host kopiert.");
+        _copyHostButton.Click += (_, _) => CopyValue(_currentDetails?.PrimaryHost, ClipboardCopyKind.Host);
 
         _copyEmailButton = CreateActionButton("Kopieren");
-        _copyEmailButton.Click += (_, _) => CopyValue(_currentDetails?.PrimaryEmail, "E-Mail kopiert.");
+        _copyEmailButton.Click += (_, _) => CopyValue(_currentDetails?.PrimaryEmail, ClipboardCopyKind.Email);
 
         _copyCustomFieldButton = CreateActionButton("Ausgewählten Wert kopieren");
         _copyCustomFieldButton.Click += (_, _) => CopySelectedCustomField();
@@ -181,6 +198,21 @@ public sealed class EntryDetailsPanel : UserControl
 
         Controls.Add(layout);
         ClearDetails();
+    }
+
+    /// <summary>
+    /// Gibt Timer- und Event-Ressourcen wieder frei.
+    /// </summary>
+    /// <param name="disposing">Gibt an, ob verwaltete Ressourcen freigegeben werden sollen.</param>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _clipboardClearTimer.Stop();
+            _clipboardClearTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 
     /// <summary>
@@ -244,6 +276,9 @@ public sealed class EntryDetailsPanel : UserControl
         UpdateOptionalField(_portFieldContainer, string.Empty);
     }
 
+    /// <summary>
+    /// Schaltet zwischen maskierter und sichtbarer Secret-Anzeige um.
+    /// </summary>
     private void ToggleSecretVisibility()
     {
         if (_currentDetails is null)
@@ -258,6 +293,9 @@ public sealed class EntryDetailsPanel : UserControl
         RefreshCustomFieldList();
     }
 
+    /// <summary>
+    /// Aktualisiert den sichtbaren Secret-Text abhängig vom aktuellen Anzeigezustand.
+    /// </summary>
     private void RefreshSecretText()
     {
         if (_currentDetails is null)
@@ -270,6 +308,9 @@ public sealed class EntryDetailsPanel : UserControl
         _secretTextBox.Text = _showSecret ? _currentDetails.SecretValue : _currentDetails.SecretPreview;
     }
 
+    /// <summary>
+    /// Baut die anklickbaren Tag-Buttons für den aktuellen Eintrag neu auf.
+    /// </summary>
     private void RefreshTagButtons()
     {
         _tagFlowPanel.SuspendLayout();
@@ -298,6 +339,9 @@ public sealed class EntryDetailsPanel : UserControl
         _tagFlowPanel.ResumeLayout();
     }
 
+    /// <summary>
+    /// Reicht einen ausgewählten Tag an die Hauptoberfläche weiter.
+    /// </summary>
     private void RaiseTagClicked(string tag)
     {
         if (string.IsNullOrWhiteSpace(tag))
@@ -309,6 +353,9 @@ public sealed class EntryDetailsPanel : UserControl
         TagClicked?.Invoke(tag);
     }
 
+    /// <summary>
+    /// Aktualisiert die Liste der Zusatzfelder für den aktuell ausgewählten Eintrag.
+    /// </summary>
     private void RefreshCustomFieldList()
     {
         _customFieldsListView.BeginUpdate();
@@ -330,39 +377,141 @@ public sealed class EntryDetailsPanel : UserControl
         _customFieldsListView.EndUpdate();
     }
 
+    /// <summary>
+    /// Kopiert den aktuell ausgewählten Zusatzfeldwert mit der passenden Schutzrichtlinie.
+    /// </summary>
     private void CopySelectedCustomField()
     {
         if (_customFieldsListView.SelectedItems.Count == 0 || _customFieldsListView.SelectedItems[0].Tag is not EntryDetailFieldViewModel field)
         {
+            RaiseStatusMessageRequested("Bitte zuerst ein Zusatzfeld auswählen.");
             return;
         }
 
-        CopyValue(field.Value, $"Zusatzfeld kopiert: {field.Name}");
+        var copyKind = field.IsSecret ? ClipboardCopyKind.SecretCustomField : ClipboardCopyKind.CustomField;
+        var copiedMessage = field.IsSecret
+            ? $"Geheimes Zusatzfeld kopiert: {field.Name}"
+            : $"Zusatzfeld kopiert: {field.Name}";
+
+        CopyValue(field.Value, copyKind, copiedMessage);
     }
 
-    private void CopyValue(string? value, string logMessage)
+    /// <summary>
+    /// Kopiert einen Wert in die Zwischenablage und wendet die passende Schutzrichtlinie an.
+    /// </summary>
+    /// <param name="value">Der zu kopierende Wert.</param>
+    /// <param name="copyKind">Die fachliche Art der Copy-Aktion.</param>
+    /// <param name="copiedMessageOverride">Optionaler Meldungstext für die Benutzeroberfläche.</param>
+    private void CopyValue(string? value, ClipboardCopyKind copyKind, string? copiedMessageOverride = null)
     {
         if (string.IsNullOrWhiteSpace(value))
+        {
+            RaiseStatusMessageRequested("Kein Wert zum Kopieren vorhanden.");
+            return;
+        }
+
+        var policy = _clipboardProtectionService.GetPolicy(copyKind);
+
+        try
+        {
+            Clipboard.SetText(value);
+            DevLog.WriteLine(copiedMessageOverride ?? policy.CopiedMessage);
+            RaiseStatusMessageRequested(copiedMessageOverride ?? policy.CopiedMessage);
+
+            if (policy.ShouldAutoClear)
+            {
+                ScheduleClipboardClear(value, policy);
+            }
+            else
+            {
+                CancelClipboardClear();
+            }
+        }
+        catch (Exception exception)
+        {
+            DevLog.WriteException("Fehler beim Kopieren in die Zwischenablage", exception);
+            RaiseStatusMessageRequested("Kopieren in die Zwischenablage fehlgeschlagen.");
+        }
+    }
+
+    /// <summary>
+    /// Plant das automatische Leeren der Zwischenablage für einen sensiblen Wert.
+    /// </summary>
+    private void ScheduleClipboardClear(string expectedValue, ClipboardCopyPolicy policy)
+    {
+        _pendingSensitiveClipboardValue = expectedValue;
+        _pendingClipboardPolicy = policy;
+        _clipboardClearTimer.Stop();
+        _clipboardClearTimer.Interval = Math.Max(1000, (int)policy.AutoClearDelay.TotalMilliseconds);
+        _clipboardClearTimer.Start();
+    }
+
+    /// <summary>
+    /// Bricht einen noch ausstehenden Auto-Clear-Vorgang ab.
+    /// </summary>
+    private void CancelClipboardClear()
+    {
+        _clipboardClearTimer.Stop();
+        _pendingSensitiveClipboardValue = null;
+        _pendingClipboardPolicy = null;
+    }
+
+    /// <summary>
+    /// Leert die Zwischenablage nur dann, wenn noch derselbe sensible Wert vorhanden ist.
+    /// </summary>
+    private void TryClearClipboard()
+    {
+        _clipboardClearTimer.Stop();
+
+        if (string.IsNullOrEmpty(_pendingSensitiveClipboardValue) || _pendingClipboardPolicy is null)
         {
             return;
         }
 
         try
         {
-            Clipboard.SetText(value);
-            DevLog.WriteLine(logMessage);
+            if (Clipboard.ContainsText() && string.Equals(Clipboard.GetText(), _pendingSensitiveClipboardValue, StringComparison.Ordinal))
+            {
+                Clipboard.Clear();
+                DevLog.WriteLine(_pendingClipboardPolicy.ClearedMessage);
+                RaiseStatusMessageRequested(_pendingClipboardPolicy.ClearedMessage);
+            }
         }
         catch (Exception exception)
         {
-            DevLog.WriteException("Fehler beim Kopieren in die Zwischenablage", exception);
+            DevLog.WriteException("Fehler beim automatischen Leeren der Zwischenablage", exception);
+        }
+        finally
+        {
+            _pendingSensitiveClipboardValue = null;
+            _pendingClipboardPolicy = null;
         }
     }
 
+    /// <summary>
+    /// Meldet eine Statusnachricht an die Hauptoberfläche zurück.
+    /// </summary>
+    private void RaiseStatusMessageRequested(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        StatusMessageRequested?.Invoke(message);
+    }
+
+    /// <summary>
+    /// Blendet optionale Detailbereiche abhängig vom vorhandenen Wert ein oder aus.
+    /// </summary>
     private static void UpdateOptionalField(Control container, string? value)
     {
         container.Visible = !string.IsNullOrWhiteSpace(value);
     }
 
+    /// <summary>
+    /// Erzeugt ein standardisiertes schreibgeschütztes Textfeld für die Detailansicht.
+    /// </summary>
     private static TextBox CreateReadOnlyTextBox(bool multiline = false)
     {
         return new TextBox
@@ -378,6 +527,9 @@ public sealed class EntryDetailsPanel : UserControl
         };
     }
 
+    /// <summary>
+    /// Erzeugt einen einheitlich formatierten Aktionsbutton für Copy- und Anzeigeaktionen.
+    /// </summary>
     private static Button CreateActionButton(string text)
     {
         return new Button
@@ -391,6 +543,9 @@ public sealed class EntryDetailsPanel : UserControl
         };
     }
 
+    /// <summary>
+    /// Baut den Tag-Bereich der Detailansicht.
+    /// </summary>
     private Control CreateTagsPanel()
     {
         var outer = new TableLayoutPanel
@@ -417,6 +572,9 @@ public sealed class EntryDetailsPanel : UserControl
         return outer;
     }
 
+    /// <summary>
+    /// Baut einen Standardbereich aus Beschriftung, Anzeigefeld und optionalen Aktionsbuttons.
+    /// </summary>
     private static Control CreateFieldPanel(string labelText, Control editor, params Control[] actionButtons)
     {
         var outer = new TableLayoutPanel
@@ -472,6 +630,9 @@ public sealed class EntryDetailsPanel : UserControl
         return outer;
     }
 
+    /// <summary>
+    /// Baut einen Listenbereich mit Beschriftung und optionalen Aktionsbuttons.
+    /// </summary>
     private static Control CreateListPanel(string labelText, Control listControl, params Control[] actionButtons)
     {
         var outer = new TableLayoutPanel
