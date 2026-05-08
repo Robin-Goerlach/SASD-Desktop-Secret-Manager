@@ -153,18 +153,49 @@ public sealed class EntryEditDialog : Form
 
     private Control CreateSecretPanel()
     {
+        // DSM-001:
+        // Neben dem Secret-Feld wird ein Generator-Button angezeigt.
+        // Der Generator schreibt nur in diesen Dialog; erst Speichern uebernimmt
+        // den Wert wirklich in das EntryEditModel.
+        var generateButton = CreateButton("Generieren");
+        generateButton.AutoSize = true;
+        generateButton.Click += (_, _) => ShowPasswordGeneratorForEntry();
+
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 3,
             RowCount = 1,
             BackColor = Color.Transparent,
         };
+
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
         panel.Controls.Add(_secretTextBox, 0, 0);
-        panel.Controls.Add(_showSecretCheckBox, 1, 0);
+        panel.Controls.Add(generateButton, 1, 0);
+        panel.Controls.Add(_showSecretCheckBox, 2, 0);
+
         return panel;
+    }
+
+    private void ShowPasswordGeneratorForEntry()
+    {
+        // DSM-001:
+        // Der Generator veraendert den Eintrag nicht sofort. Er setzt nur den Text
+        // im Bearbeitungsdialog. Erst wenn der Benutzer den Dialog mit "Speichern"
+        // bestaetigt, wird das neue Secret in das EntryEditModel uebernommen.
+        using var dialog = new PasswordGeneratorDialog();
+
+        if (dialog.ShowDialog(this) != DialogResult.OK || dialog.GeneratedPassword is null)
+        {
+            return;
+        }
+
+        _secretTextBox.Text = dialog.GeneratedPassword.Value;
+        _secretTextBox.SelectionStart = _secretTextBox.TextLength;
+        _secretTextBox.Focus();
     }
 
     private Control CreateTagsPanel()

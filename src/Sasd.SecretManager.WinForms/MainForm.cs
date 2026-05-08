@@ -178,7 +178,7 @@ public sealed class MainForm : Form
         groupMenu.DropDownItems.Add(_deleteGroupMenuItem);
 
         var toolsMenu = new ToolStripMenuItem("Werkzeuge");
-        toolsMenu.DropDownItems.Add("Passwortgenerator", null, (_, _) => ShowInfo("Noch nicht implementiert."));
+        toolsMenu.DropDownItems.Add("Passwortgenerator", null, (_, _) => ShowPasswordGenerator());
         toolsMenu.DropDownItems.Add("Password-Safe-Import", null, (_, _) => ShowInfo("Noch nicht implementiert."));
 
         var helpMenu = new ToolStripMenuItem("Hilfe");
@@ -1427,6 +1427,20 @@ public sealed class MainForm : Form
         }
 
         return null;
+    }
+
+    private void ShowPasswordGenerator()
+    {
+        // DSM-001:
+        // Der Generator ist auch unabhaengig vom Bearbeiten eines Eintrags erreichbar.
+        // In diesem Modus kann der Benutzer ein Passwort erzeugen und kopieren,
+        // ohne den aktuellen Tresor zu veraendern.
+        using var dialog = new PasswordGeneratorDialog();
+
+        if (dialog.ShowDialog(this) == DialogResult.OK && dialog.GeneratedPassword is not null)
+        {
+            SetStatus($"Passwortgenerator: Passwort mit {dialog.GeneratedPassword.Length} Zeichen erzeugt.");
+        }
     }
 
     private void ShowInfo(string message)
