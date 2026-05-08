@@ -1,4 +1,5 @@
 using Sasd.SecretManager.Application;
+using Sasd.SecretManager.Security;
 
 namespace Sasd.SecretManager.WinForms;
 
@@ -36,6 +37,8 @@ public sealed class PasswordGeneratorDialog : Form
     /// </summary>
     public PasswordGeneratorDialog()
     {
+        DevLog.Info("Passwortgenerator geöffnet.");
+
         Text = "Passwortgenerator";
         Width = 760;
         Height = 520;
@@ -211,6 +214,7 @@ public sealed class PasswordGeneratorDialog : Form
             _passwordTextBox.Text = GeneratedPassword.Value;
             _statusLabel.Text = $"Passwort erzeugt: {GeneratedPassword.Length} Zeichen, " +
                                 $"{GeneratedPassword.SelectedCharacterGroupCount} Zeichengruppen.";
+            DevLog.Info("Neues Passwort generiert.");
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
         {
@@ -250,6 +254,7 @@ public sealed class PasswordGeneratorDialog : Form
 
         Clipboard.SetText(_passwordTextBox.Text);
         _statusLabel.Text = "Passwort in die Zwischenablage kopiert. Auto-Clear erfolgt hier noch nicht global.";
+        DevLog.Info("Generiertes Passwort in Zwischenablage kopiert.");
     }
 
     private void AcceptGeneratedPassword()
@@ -264,6 +269,7 @@ public sealed class PasswordGeneratorDialog : Form
             return;
         }
 
+        DevLog.Info("Generiertes Passwort übernommen.");
         DialogResult = DialogResult.OK;
         Close();
     }

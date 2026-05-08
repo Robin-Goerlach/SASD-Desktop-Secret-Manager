@@ -1,5 +1,6 @@
 using Sasd.SecretManager.Application;
 using Sasd.SecretManager.Domain;
+using Sasd.SecretManager.Security;
 
 // ============================================================================
 // Dateiüberblick:
@@ -194,6 +195,7 @@ public sealed class EntryEditDialog : Form
         }
 
         _secretTextBox.Text = dialog.GeneratedPassword.Value;
+        DevLog.Info("Generiertes Passwort übernommen.");
         _secretTextBox.SelectionStart = _secretTextBox.TextLength;
         _secretTextBox.Focus();
     }

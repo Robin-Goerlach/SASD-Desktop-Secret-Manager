@@ -36,6 +36,7 @@ public sealed class MainForm : Form
     private readonly Button _deleteGroupButton;
     private readonly ToolStripMenuItem _saveVaultMenuItem;
     private readonly ToolStripMenuItem _saveVaultAsMenuItem;
+    private readonly ToolStripMenuItem _lockVaultMenuItem;
     private readonly ToolStripMenuItem _newEntryMenuItem;
     private readonly ToolStripMenuItem _editEntryMenuItem;
     private readonly ToolStripMenuItem _deleteEntryMenuItem;
@@ -54,12 +55,22 @@ public sealed class MainForm : Form
     private readonly VaultOrganizationService _organizationService = new();
     private readonly VaultLifecycleService _vaultLifecycleService = new();
     private readonly UnsavedChangesGuardService _unsavedChangesGuardService = new();
+    private readonly AutoLockService _autoLockService = new();
+    private readonly AutoLockOptions _autoLockOptions = new();
     private readonly IVaultRepository _vaultRepository = new VaultFileRepository();
+
+    // DSM-002:
+    // Der WinForms-Timer prueft regelmaessig, ob die Application-Schicht
+    // aufgrund der letzten Benutzeraktivitaet eine Sperre empfiehlt.
+    private readonly System.Windows.Forms.Timer _autoLockTimer;
 
     private SecretVault _currentVault = new();
     private string? _currentVaultFilePath;
     private string? _currentMasterPassword;
     private bool _isDirty;
+    private bool _isVaultLocked;
+    private bool _isAutoLockTimerBusy;
+    private DateTimeOffset _lastUserActivityUtc = DateTimeOffset.UtcNow;
     private int _sortColumn;
     private bool _sortAscending = true;
     private bool _closeRequestedFromMenu;
@@ -87,6 +98,7 @@ public sealed class MainForm : Form
 
         _saveVaultMenuItem = new ToolStripMenuItem("Tresor speichern", null, async (_, _) => await SaveVaultAsync(saveAs: false));
         _saveVaultAsMenuItem = new ToolStripMenuItem("Tresor speichern unter", null, async (_, _) => await SaveVaultAsync(saveAs: true));
+        _lockVaultMenuItem = new ToolStripMenuItem("Tresor sperren", null, async (_, _) => await ToggleVaultLockAsync());
         _newEntryMenuItem = new ToolStripMenuItem("Neuer Eintrag", null, (_, _) => CreateNewEntry());
         _editEntryMenuItem = new ToolStripMenuItem("Eintrag bearbeiten", null, (_, _) => EditSelectedEntry());
         _deleteEntryMenuItem = new ToolStripMenuItem("Eintrag löschen", null, (_, _) => DeleteSelectedEntry());
@@ -142,6 +154,14 @@ public sealed class MainForm : Form
         Controls.Add(menuStrip);
         MainMenuStrip = menuStrip;
 
+        RegisterActivityTracking(this);
+        _autoLockTimer = new System.Windows.Forms.Timer
+        {
+            Interval = ToTimerIntervalMilliseconds(_autoLockOptions.Normalize().PollInterval),
+        };
+        _autoLockTimer.Tick += async (_, _) => await HandleAutoLockTimerTickAsync();
+        _autoLockTimer.Start();
+
         LoadDemoVault();
     }
 
@@ -157,6 +177,7 @@ public sealed class MainForm : Form
         var fileMenu = new ToolStripMenuItem("Datei");
         fileMenu.DropDownItems.Add("Neuer Tresor", null, async (_, _) => await CreateNewVaultAsync());
         fileMenu.DropDownItems.Add("Tresor öffnen", null, async (_, _) => await OpenVaultAsync());
+        fileMenu.DropDownItems.Add(_lockVaultMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(_saveVaultMenuItem);
         fileMenu.DropDownItems.Add(_saveVaultAsMenuItem);
@@ -480,6 +501,8 @@ public sealed class MainForm : Form
         _currentVaultFilePath = filePath;
         _currentMasterPassword = masterPassword;
         _isDirty = isDirty;
+        _isVaultLocked = false;
+        RecordUserActivity();
 
         BuildGroupNodesFromVault();
         ApplyVaultSummary();
@@ -597,6 +620,12 @@ public sealed class MainForm : Form
 
     private void ApplyFiltersAndRefresh(Guid? preferredSelectionId = null)
     {
+        if (_isVaultLocked)
+        {
+            ShowLockedView();
+            return;
+        }
+
         var selectedGroupPath = GetSelectedGroupPath();
         var searchText = _searchTextBox.Text;
 
@@ -903,6 +932,11 @@ public sealed class MainForm : Form
 
     private void CreateNewEntry()
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         var selectedGroupPath = GetSelectedGroupPath();
         var model = EntryEditModel.CreateNew(selectedGroupPath);
         var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
@@ -922,6 +956,11 @@ public sealed class MainForm : Form
 
     private void EditSelectedEntry()
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         if (!TryGetSelectedEntry(out var entry))
         {
             return;
@@ -954,6 +993,11 @@ public sealed class MainForm : Form
 
     private void DeleteSelectedEntry()
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         if (!TryGetSelectedEntry(out var entry))
         {
             return;
@@ -984,6 +1028,11 @@ public sealed class MainForm : Form
 
     private void MoveSelectedEntryToCurrentGroup()
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         if (!TryGetSelectedEntry(out var entry))
         {
             return;
@@ -1011,6 +1060,11 @@ public sealed class MainForm : Form
 
     private void CreateGroup(bool createAsRoot = false)
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         var parentGroupPath = createAsRoot ? null : GetSelectedGroupPath();
         using var dialog = new GroupNameDialog(
             title: "Neue Gruppe",
@@ -1041,6 +1095,11 @@ public sealed class MainForm : Form
 
     private void CreateSubGroup()
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(GetSelectedGroupPath()))
         {
             ShowInfo("Bitte zuerst die Zielgruppe auswählen, unter der die neue Untergruppe angelegt werden soll.");
@@ -1052,6 +1111,11 @@ public sealed class MainForm : Form
 
     private void RenameSelectedGroup()
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         var selectedGroupPath = GetSelectedGroupPath();
         if (string.IsNullOrWhiteSpace(selectedGroupPath))
         {
@@ -1093,6 +1157,11 @@ public sealed class MainForm : Form
 
     private void DeleteSelectedGroup()
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return;
+        }
+
         var selectedGroupPath = GetSelectedGroupPath();
         if (string.IsNullOrWhiteSpace(selectedGroupPath))
         {
@@ -1223,6 +1292,11 @@ public sealed class MainForm : Form
 
     private async Task<bool> SaveVaultAsync(bool saveAs)
     {
+        if (!EnsureVaultUnlocked())
+        {
+            return false;
+        }
+
         var targetPath = _currentVaultFilePath;
 
         if (saveAs || string.IsNullOrWhiteSpace(targetPath))
@@ -1351,31 +1425,41 @@ public sealed class MainForm : Form
             ? "ohne Datei"
             : Path.GetFileName(_currentVaultFilePath);
         var dirtyMarker = _isDirty ? " *" : string.Empty;
-        Text = $"SASD Secret Manager – {vaultName} [{fileLabel}]{dirtyMarker}";
+        var lockMarker = _isVaultLocked ? " 🔒" : string.Empty;
+        Text = $"SASD Secret Manager – {vaultName} [{fileLabel}]{dirtyMarker}{lockMarker}";
     }
 
     private void UpdateUiState()
     {
         var hasVault = _currentVault is not null;
-        var hasSelectedEntry = _entryListView.SelectedItems.Count > 0;
-        var hasSelectedGroup = !string.IsNullOrWhiteSpace(GetSelectedGroupPath());
+        var canUseVaultContent = hasVault && !_isVaultLocked;
+        var hasSelectedEntry = canUseVaultContent && _entryListView.SelectedItems.Count > 0;
+        var hasSelectedGroup = canUseVaultContent && !string.IsNullOrWhiteSpace(GetSelectedGroupPath());
 
-        _saveVaultMenuItem.Enabled = hasVault && _isDirty;
-        _saveVaultAsMenuItem.Enabled = hasVault;
-        _newEntryMenuItem.Enabled = hasVault;
+        _saveVaultMenuItem.Enabled = canUseVaultContent && _isDirty;
+        _saveVaultAsMenuItem.Enabled = canUseVaultContent;
+        _lockVaultMenuItem.Enabled = hasVault;
+        _lockVaultMenuItem.Text = _isVaultLocked ? "Tresor entsperren" : "Tresor sperren";
+
+        _newEntryMenuItem.Enabled = canUseVaultContent;
         _editEntryMenuItem.Enabled = hasSelectedEntry;
         _deleteEntryMenuItem.Enabled = hasSelectedEntry;
         _moveEntryMenuItem.Enabled = hasSelectedEntry && hasSelectedGroup;
-        _newGroupMenuItem.Enabled = hasVault;
+        _newGroupMenuItem.Enabled = canUseVaultContent;
         _newSubGroupMenuItem.Enabled = hasSelectedGroup;
         _renameGroupMenuItem.Enabled = hasSelectedGroup;
         _deleteGroupMenuItem.Enabled = hasSelectedGroup;
 
-        _newEntryButton.Enabled = hasVault;
+        _searchTextBox.Enabled = canUseVaultContent;
+        _groupTreeView.Enabled = canUseVaultContent;
+        _entryListView.Enabled = canUseVaultContent;
+        _detailsPanel.Enabled = canUseVaultContent;
+
+        _newEntryButton.Enabled = canUseVaultContent;
         _editEntryButton.Enabled = hasSelectedEntry;
         _deleteEntryButton.Enabled = hasSelectedEntry;
         _moveEntryButton.Enabled = hasSelectedEntry && hasSelectedGroup;
-        _newGroupButton.Enabled = hasVault;
+        _newGroupButton.Enabled = canUseVaultContent;
         _renameGroupButton.Enabled = hasSelectedGroup;
         _deleteGroupButton.Enabled = hasSelectedGroup;
     }
@@ -1429,6 +1513,215 @@ public sealed class MainForm : Form
         return null;
     }
 
+
+    /// <summary>
+    /// Registriert einfache Aktivitätsereignisse auf der Form und ihren Kindern.
+    /// </summary>
+    /// <remarks>
+    /// WinForms-Ereignisse bubbelen nicht so komfortabel wie in Web-UIs. Deshalb
+    /// hängen wir die Aktivitätsmessung rekursiv an die vorhandenen Controls.
+    /// Das reicht für diesen V1-Milestone und kann später durch eine zentrale
+    /// Message-Filter-Lösung ersetzt werden.
+    /// </remarks>
+    private void RegisterActivityTracking(Control control)
+    {
+        control.MouseMove += (_, _) => RecordUserActivity();
+        control.MouseDown += (_, _) => RecordUserActivity();
+        control.KeyDown += (_, _) => RecordUserActivity();
+
+        foreach (Control child in control.Controls)
+        {
+            RegisterActivityTracking(child);
+        }
+    }
+
+    private void RecordUserActivity()
+    {
+        _lastUserActivityUtc = DateTimeOffset.UtcNow;
+    }
+
+    private static int ToTimerIntervalMilliseconds(TimeSpan pollInterval)
+    {
+        var milliseconds = pollInterval.TotalMilliseconds;
+        if (milliseconds < 1_000)
+        {
+            return 1_000;
+        }
+
+        if (milliseconds > int.MaxValue)
+        {
+            return int.MaxValue;
+        }
+
+        return (int)milliseconds;
+    }
+
+    private async Task HandleAutoLockTimerTickAsync()
+    {
+        if (_isAutoLockTimerBusy)
+        {
+            return;
+        }
+
+        _isAutoLockTimerBusy = true;
+        try
+        {
+            // Wenn ein modaler Dialog offen ist, sperren wir in diesem V1-Milestone
+            // nicht mitten in den Bearbeitungsfluss hinein. Das vermeidet Datenverlust
+            // und schwer nachvollziehbare UI-Zustände.
+            if (System.Windows.Forms.Application.OpenForms.Count > 1)
+            {
+                return;
+            }
+
+            var shouldLock = _autoLockService.ShouldLock(
+                _autoLockOptions,
+                _lastUserActivityUtc,
+                DateTimeOffset.UtcNow,
+                hasOpenVault: _currentVault is not null,
+                isAlreadyLocked: _isVaultLocked);
+
+            if (shouldLock)
+            {
+                await LockVaultAsync(VaultLockReason.Inactivity);
+            }
+        }
+        finally
+        {
+            _isAutoLockTimerBusy = false;
+        }
+    }
+
+    private async Task ToggleVaultLockAsync()
+    {
+        if (_isVaultLocked)
+        {
+            await UnlockVaultAsync();
+        }
+        else
+        {
+            await LockVaultAsync(VaultLockReason.Manual);
+        }
+    }
+
+    private Task LockVaultAsync(VaultLockReason reason)
+    {
+        if (_isVaultLocked || _currentVault is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _isVaultLocked = true;
+
+        var reasonText = reason == VaultLockReason.Inactivity
+            ? "Auto-Lock nach Inaktivität"
+            : "manuelle Sperre";
+
+        DevLog.Info($"Tresor gesperrt ({reasonText}): {_currentVault.Name}");
+        ShowLockedView();
+        UpdateWindowTitle();
+        return Task.CompletedTask;
+    }
+
+    private async Task UnlockVaultAsync()
+    {
+        if (!_isVaultLocked)
+        {
+            return;
+        }
+
+        using var passwordDialog = new MasterPasswordDialog(
+            "Tresor entsperren",
+            "Bitte Master-Passwort eingeben, um den Tresor wieder freizugeben.");
+
+        if (passwordDialog.ShowDialog(this) != DialogResult.OK)
+        {
+            SetStatus("Tresor bleibt gesperrt.");
+            return;
+        }
+
+        // Wenn der Tresor aus einer Datei geladen wurde und keine ungespeicherten
+        // Änderungen vorliegen, prüfen wir das Passwort am echten Tresorformat.
+        // Das ist aussagekräftiger als ein reiner Stringvergleich.
+        if (!string.IsNullOrWhiteSpace(_currentVaultFilePath) && !_isDirty)
+        {
+            try
+            {
+                var loadedVault = await _vaultRepository.LoadAsync(_currentVaultFilePath, passwordDialog.Password);
+                _isVaultLocked = false;
+                SetCurrentVault(loadedVault, _currentVaultFilePath, passwordDialog.Password, isDirty: false);
+                DevLog.Info($"Tresor entsperrt: {loadedVault.Name}");
+                SetStatus($"Tresor entsperrt: {loadedVault.Name}");
+                return;
+            }
+            catch (VaultStorageException exception)
+            {
+                ShowError("Tresor konnte nicht entsperrt werden. Bitte Master-Passwort prüfen.", exception);
+                return;
+            }
+        }
+
+        // Bei neuen oder geänderten Tresoren halten wir den aktuellen In-Memory-Stand
+        // bewusst fest, damit Auto-Lock keine ungespeicherten Daten verwirft. Wenn
+        // bereits ein Master-Passwort bekannt ist, verwenden wir es als einfache
+        // Freigabeprüfung. Für Demo-/Altzustände ohne bekanntes Passwort wird der
+        // Dialog trotzdem als bewusste Benutzeraktion genutzt.
+        if (!string.IsNullOrEmpty(_currentMasterPassword)
+            && !string.Equals(_currentMasterPassword, passwordDialog.Password, StringComparison.Ordinal))
+        {
+            MessageBox.Show(
+                this,
+                "Das Master-Passwort ist nicht korrekt. Der Tresor bleibt gesperrt.",
+                "SASD Secret Manager",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            SetStatus("Entsperren fehlgeschlagen.");
+            DevLog.Info("Entsperren fehlgeschlagen: Master-Passwort stimmt nicht überein.");
+            return;
+        }
+
+        _currentMasterPassword ??= passwordDialog.Password;
+        _isVaultLocked = false;
+        RecordUserActivity();
+        BuildGroupNodesFromVault();
+        ApplyFiltersAndRefresh();
+        UpdateWindowTitle();
+        DevLog.Info($"Tresor entsperrt: {_currentVault.Name}");
+        SetStatus($"Tresor entsperrt: {_currentVault.Name}");
+    }
+
+    private void ShowLockedView()
+    {
+        var vaultName = string.IsNullOrWhiteSpace(_currentVault?.Name)
+            ? "Tresor"
+            : _currentVault.Name;
+
+        _detailsPanel.ClearDetails();
+
+        _entryListView.BeginUpdate();
+        _entryListView.Items.Clear();
+        _entryListView.EndUpdate();
+
+        _groupTreeView.BeginUpdate();
+        _groupTreeView.Nodes.Clear();
+        _groupTreeView.Nodes.Add(new TreeNode($"{vaultName} (gesperrt)") { Tag = null });
+        _groupTreeView.EndUpdate();
+
+        _statusLabel.Text = "Tresor ist gesperrt. Über Datei → Tresor entsperren kannst du weiterarbeiten.";
+        UpdateUiState();
+    }
+
+    private bool EnsureVaultUnlocked()
+    {
+        if (!_isVaultLocked)
+        {
+            return true;
+        }
+
+        SetStatus("Tresor ist gesperrt. Bitte zuerst entsperren.");
+        return false;
+    }
+
     private void ShowPasswordGenerator()
     {
         // DSM-001:
@@ -1441,6 +1734,12 @@ public sealed class MainForm : Form
         {
             SetStatus($"Passwortgenerator: Passwort mit {dialog.GeneratedPassword.Length} Zeichen erzeugt.");
         }
+    }
+
+    private enum VaultLockReason
+    {
+        Manual,
+        Inactivity,
     }
 
     private void ShowInfo(string message)
@@ -1469,6 +1768,7 @@ public sealed class MainForm : Form
                 return;
             }
 
+            _autoLockTimer.Stop();
             base.OnFormClosing(e);
         }
         finally
