@@ -27,6 +27,10 @@ public sealed class MainForm : Form
     private readonly EntryDetailsPanel _detailsPanel;
     private readonly ToolStripStatusLabel _statusLabel;
     private readonly TextBox _searchTextBox;
+    private readonly ComboBox _entryTypeFilterComboBox;
+    private readonly ComboBox _tagFilterComboBox;
+    private readonly ComboBox _specialFilterComboBox;
+    private readonly Button _resetFiltersButton;
     private readonly Button _newEntryButton;
     private readonly Button _editEntryButton;
     private readonly Button _deleteEntryButton;
@@ -59,6 +63,8 @@ public sealed class MainForm : Form
     private readonly AutoLockOptions _autoLockOptions = new();
     private readonly IVaultRepository _vaultRepository = new VaultFileRepository();
 
+    private const string AllTagsFilterLabel = "Alle Tags";
+
     // DSM-002:
     // Der WinForms-Timer prueft regelmaessig, ob die Application-Schicht
     // aufgrund der letzten Benutzeraktivitaet eine Sperre empfiehlt.
@@ -70,6 +76,7 @@ public sealed class MainForm : Form
     private bool _isDirty;
     private bool _isVaultLocked;
     private bool _isAutoLockTimerBusy;
+    private bool _isRefreshingFilterControls;
     private DateTimeOffset _lastUserActivityUtc = DateTimeOffset.UtcNow;
     private int _sortColumn;
     private bool _sortAscending = true;
@@ -120,6 +127,10 @@ public sealed class MainForm : Form
         _detailsPanel = new EntryDetailsPanel();
         _detailsPanel.StatusMessageRequested += message => SetStatus(message);
         _searchTextBox = BuildSearchTextBox();
+        _entryTypeFilterComboBox = BuildEntryTypeFilterComboBox();
+        _tagFilterComboBox = BuildTagFilterComboBox();
+        _specialFilterComboBox = BuildSpecialFilterComboBox();
+        _resetFiltersButton = BuildActionButton("Filter zurücksetzen", (_, _) => ResetStructuredFilters());
         _newEntryButton = BuildActionButton("Neuer Eintrag", (_, _) => CreateNewEntry());
         _editEntryButton = BuildActionButton("Bearbeiten", (_, _) => EditSelectedEntry());
         _deleteEntryButton = BuildActionButton("Löschen", (_, _) => DeleteSelectedEntry());
@@ -363,6 +374,11 @@ public sealed class MainForm : Form
 
         searchBox.TextChanged += (_, _) =>
         {
+            if (_isRefreshingFilterControls)
+            {
+                return;
+            }
+
             DevLog.WriteLine(string.IsNullOrWhiteSpace(searchBox.Text)
                 ? "Suche zurückgesetzt."
                 : $"Suche geändert: {searchBox.Text}");
@@ -370,6 +386,88 @@ public sealed class MainForm : Form
         };
 
         return searchBox;
+    }
+
+    private ComboBox BuildEntryTypeFilterComboBox()
+    {
+        var comboBox = CreateFilterComboBox();
+        comboBox.Items.Add(new EntryTypeFilterItem("Alle Typen", null));
+
+        foreach (var entryType in Enum.GetValues<EntryType>())
+        {
+            comboBox.Items.Add(new EntryTypeFilterItem(entryType.ToString(), entryType));
+        }
+
+        comboBox.SelectedIndex = 0;
+        comboBox.SelectedIndexChanged += (_, _) =>
+        {
+            if (_isRefreshingFilterControls)
+            {
+                return;
+            }
+
+            DevLog.Info($"Typfilter geändert: {comboBox.SelectedItem}");
+            ApplyFiltersAndRefresh();
+        };
+
+        return comboBox;
+    }
+
+    private ComboBox BuildTagFilterComboBox()
+    {
+        var comboBox = CreateFilterComboBox();
+        comboBox.Items.Add(AllTagsFilterLabel);
+        comboBox.SelectedIndex = 0;
+        comboBox.SelectedIndexChanged += (_, _) =>
+        {
+            if (_isRefreshingFilterControls)
+            {
+                return;
+            }
+
+            DevLog.Info($"Tagfilter geändert: {comboBox.SelectedItem}");
+            ApplyFiltersAndRefresh();
+        };
+
+        return comboBox;
+    }
+
+    private ComboBox BuildSpecialFilterComboBox()
+    {
+        var comboBox = CreateFilterComboBox();
+        comboBox.Items.Add(new SpecialFilterItem("Alle Einträge", EntrySpecialFilter.None));
+        comboBox.Items.Add(new SpecialFilterItem("Ohne Gruppe", EntrySpecialFilter.WithoutGroup));
+        comboBox.Items.Add(new SpecialFilterItem("Mit URL-Feld", EntrySpecialFilter.WithUrlField));
+        comboBox.Items.Add(new SpecialFilterItem("Mit Host-Feld", EntrySpecialFilter.WithHostField));
+        comboBox.Items.Add(new SpecialFilterItem("Mit E-Mail-Feld", EntrySpecialFilter.WithEmailField));
+        comboBox.Items.Add(new SpecialFilterItem("Mit Zusatzfeldern", EntrySpecialFilter.WithCustomFields));
+        comboBox.Items.Add(new SpecialFilterItem("Mit geheimen Zusatzfeldern", EntrySpecialFilter.WithSecretCustomFields));
+        comboBox.SelectedIndex = 0;
+        comboBox.SelectedIndexChanged += (_, _) =>
+        {
+            if (_isRefreshingFilterControls)
+            {
+                return;
+            }
+
+            DevLog.Info($"Spezialfilter geändert: {comboBox.SelectedItem}");
+            ApplyFiltersAndRefresh();
+        };
+
+        return comboBox;
+    }
+
+    private ComboBox CreateFilterComboBox()
+    {
+        return new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            BackColor = Color.FromArgb(24, 28, 36),
+            ForeColor = Color.Gainsboro,
+            FlatStyle = FlatStyle.Flat,
+            Width = 160,
+            Margin = new Padding(0, 0, 8, 8),
+        };
     }
 
     private Button BuildActionButton(string text, EventHandler onClick)
@@ -440,20 +538,61 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 5,
             BackColor = BackColor,
         };
 
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         container.Controls.Add(_searchTextBox, 0, 0);
-        container.Controls.Add(actionsPanel, 0, 1);
-        container.Controls.Add(hintLabel, 0, 2);
-        container.Controls.Add(_entryListView, 0, 3);
+        container.Controls.Add(BuildStructuredFilterPanel(), 0, 1);
+        container.Controls.Add(actionsPanel, 0, 2);
+        container.Controls.Add(hintLabel, 0, 3);
+        container.Controls.Add(_entryListView, 0, 4);
         return container;
+    }
+
+    private Control BuildStructuredFilterPanel()
+    {
+        // DSM-004:
+        // Die Filterleiste bietet häufige Sichten direkt in der UI an, ohne eine
+        // eigene Query-Sprache lernen zu müssen. Die eigentliche Fachlogik liegt
+        // weiterhin in VaultQueryService und bleibt dadurch testbar.
+        var panel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            BackColor = BackColor,
+            Margin = new Padding(0, 0, 0, 8),
+        };
+
+        panel.Controls.Add(CreateFilterLabel("Typ"));
+        panel.Controls.Add(_entryTypeFilterComboBox);
+        panel.Controls.Add(CreateFilterLabel("Tag"));
+        panel.Controls.Add(_tagFilterComboBox);
+        panel.Controls.Add(CreateFilterLabel("Spezial"));
+        panel.Controls.Add(_specialFilterComboBox);
+        panel.Controls.Add(_resetFiltersButton);
+        return panel;
+    }
+
+    private static Label CreateFilterLabel(string text)
+    {
+        return new Label
+        {
+            AutoSize = true,
+            Text = text,
+            ForeColor = Color.Silver,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(0, 6, 4, 0),
+            Margin = new Padding(0, 0, 4, 8),
+        };
     }
 
     private Control WrapInPanel(string title, Control content)
@@ -505,6 +644,7 @@ public sealed class MainForm : Form
         RecordUserActivity();
 
         BuildGroupNodesFromVault();
+        RefreshStructuredFilterOptions();
         ApplyVaultSummary();
         UpdateWindowTitle();
         UpdateUiState();
@@ -627,16 +767,17 @@ public sealed class MainForm : Form
         }
 
         var selectedGroupPath = GetSelectedGroupPath();
-        var searchText = _searchTextBox.Text;
+        var filterCriteria = CreateFilterCriteria(selectedGroupPath);
+        var searchText = filterCriteria.SearchText;
 
         var selectedEntryId = preferredSelectionId
             ?? (_entryListView.SelectedItems.Count > 0 ? ((SecretEntry)_entryListView.SelectedItems[0].Tag!).Id : Guid.Empty);
 
-        var visibleEntries = _queryService.GetVisibleEntries(_currentVault, selectedGroupPath, searchText, _sortColumn, _sortAscending);
+        var visibleEntries = _queryService.GetVisibleEntries(_currentVault, filterCriteria);
         var allowAutoSelection = _uxPolicyService.ShouldAutoSelectFirstEntry(selectedGroupPath, searchText, visibleEntries.Count);
         RefreshEntryList(visibleEntries, selectedEntryId, allowAutoSelection);
 
-        _statusLabel.Text = _uxPolicyService.BuildSelectionStatusText(
+        var statusText = _uxPolicyService.BuildSelectionStatusText(
             _currentVault,
             selectedGroupPath,
             visibleEntries.Count,
@@ -646,7 +787,52 @@ public sealed class MainForm : Form
             _currentVaultFilePath,
             _isDirty);
 
+        var structuredFilterText = BuildStructuredFilterStatusText(filterCriteria);
+        _statusLabel.Text = string.IsNullOrWhiteSpace(structuredFilterText)
+            ? statusText
+            : $"{statusText} | {structuredFilterText}";
+
         UpdateUiState();
+    }
+
+    private EntryFilterCriteria CreateFilterCriteria(string? selectedGroupPath)
+    {
+        var selectedTypeItem = _entryTypeFilterComboBox.SelectedItem as EntryTypeFilterItem;
+        var selectedSpecialItem = _specialFilterComboBox.SelectedItem as SpecialFilterItem;
+        var selectedTag = _tagFilterComboBox.SelectedItem as string;
+
+        return new EntryFilterCriteria
+        {
+            SelectedGroupPath = selectedGroupPath,
+            SearchText = _searchTextBox.Text,
+            EntryType = selectedTypeItem?.EntryType,
+            Tag = string.Equals(selectedTag, AllTagsFilterLabel, StringComparison.OrdinalIgnoreCase) ? null : selectedTag,
+            SpecialFilter = selectedSpecialItem?.Filter ?? EntrySpecialFilter.None,
+            SortColumn = _sortColumn,
+            SortAscending = _sortAscending,
+        }.Normalize();
+    }
+
+    private string BuildStructuredFilterStatusText(EntryFilterCriteria criteria)
+    {
+        var parts = new List<string>();
+
+        if (criteria.EntryType.HasValue)
+        {
+            parts.Add($"Typ: {criteria.EntryType.Value}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(criteria.Tag))
+        {
+            parts.Add($"Tag: {criteria.Tag}");
+        }
+
+        if (criteria.SpecialFilter != EntrySpecialFilter.None)
+        {
+            parts.Add($"Spezial: {DescribeSpecialFilter(criteria.SpecialFilter)}");
+        }
+
+        return parts.Count == 0 ? string.Empty : "Filter aktiv – " + string.Join(", ", parts);
     }
 
     private void RefreshEntryList(IReadOnlyList<SecretEntry> entries, Guid selectedEntryId, bool allowAutoSelection)
@@ -941,7 +1127,7 @@ public sealed class MainForm : Form
         var model = EntryEditModel.CreateNew(selectedGroupPath);
         var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
 
-        using var dialog = new EntryEditDialog("Neuer Eintrag", model, availableGroups);
+        using var dialog = new EntryEditDialog("Neuer Eintrag", model, availableGroups, GetKnownTagsForDialog());
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
@@ -985,7 +1171,7 @@ public sealed class MainForm : Form
         var model = EntryEditModel.FromEntry(entry, groupPath);
         var availableGroups = _mutationService.GetAvailableGroupPaths(_currentVault);
 
-        using var dialog = new EntryEditDialog($"Eintrag bearbeiten: {entry.Title}", model, availableGroups);
+        using var dialog = new EntryEditDialog($"Eintrag bearbeiten: {entry.Title}", model, availableGroups, GetKnownTagsForDialog());
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
@@ -1443,8 +1629,120 @@ public sealed class MainForm : Form
     private void MarkDirty()
     {
         _isDirty = true;
+        RefreshStructuredFilterOptions();
         UpdateWindowTitle();
         ApplyFiltersAndRefresh();
+    }
+
+    private void RefreshStructuredFilterOptions()
+    {
+        if (_tagFilterComboBox is null)
+        {
+            return;
+        }
+
+        var selectedTag = _tagFilterComboBox.SelectedItem as string;
+        var allKnownTags = GetKnownTagsForDialog();
+
+        _isRefreshingFilterControls = true;
+        try
+        {
+            _tagFilterComboBox.Items.Clear();
+            _tagFilterComboBox.Items.Add(AllTagsFilterLabel);
+
+            foreach (var tag in allKnownTags)
+            {
+                _tagFilterComboBox.Items.Add(tag);
+            }
+
+            if (!string.IsNullOrWhiteSpace(selectedTag) && !string.Equals(selectedTag, AllTagsFilterLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                var index = FindComboBoxItemIndex(_tagFilterComboBox, selectedTag);
+                _tagFilterComboBox.SelectedIndex = index >= 0 ? index : 0;
+            }
+            else
+            {
+                _tagFilterComboBox.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _isRefreshingFilterControls = false;
+        }
+    }
+
+    private IReadOnlyList<string> GetKnownTagsForDialog()
+    {
+        if (_currentVault is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        // Bekannte Tags können im Vault gepflegt sein oder erst durch Einträge
+        // entstehen. Für Filter und Dialogvorschläge bilden wir bewusst die
+        // Vereinigung, damit frisch importierte oder manuell erfasste Tags sofort
+        // sichtbar werden.
+        return _currentVault.KnownTags
+            .Concat(_currentVault.Entries.SelectMany(entry => entry.Tags))
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private void ResetStructuredFilters()
+    {
+        _isRefreshingFilterControls = true;
+        try
+        {
+            _searchTextBox.Clear();
+            SelectComboBoxIndexIfAvailable(_entryTypeFilterComboBox, 0);
+            SelectComboBoxIndexIfAvailable(_tagFilterComboBox, 0);
+            SelectComboBoxIndexIfAvailable(_specialFilterComboBox, 0);
+        }
+        finally
+        {
+            _isRefreshingFilterControls = false;
+        }
+
+        DevLog.Info("Strukturierte Filter zurückgesetzt.");
+        ApplyFiltersAndRefresh();
+    }
+
+    private static void SelectComboBoxIndexIfAvailable(ComboBox comboBox, int index)
+    {
+        if (comboBox.Items.Count > index)
+        {
+            comboBox.SelectedIndex = index;
+        }
+    }
+
+    private static int FindComboBoxItemIndex(ComboBox comboBox, string text)
+    {
+        for (var index = 0; index < comboBox.Items.Count; index++)
+        {
+            if (string.Equals(comboBox.Items[index]?.ToString(), text, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string DescribeSpecialFilter(EntrySpecialFilter filter)
+    {
+        return filter switch
+        {
+            EntrySpecialFilter.WithoutGroup => "Ohne Gruppe",
+            EntrySpecialFilter.WithUrlField => "Mit URL-Feld",
+            EntrySpecialFilter.WithHostField => "Mit Host-Feld",
+            EntrySpecialFilter.WithEmailField => "Mit E-Mail-Feld",
+            EntrySpecialFilter.WithCustomFields => "Mit Zusatzfeldern",
+            EntrySpecialFilter.WithSecretCustomFields => "Mit geheimen Zusatzfeldern",
+            _ => "Alle Einträge",
+        };
     }
 
     private void UpdateWindowTitle()
@@ -1480,6 +1778,10 @@ public sealed class MainForm : Form
         _deleteGroupMenuItem.Enabled = hasSelectedGroup;
 
         _searchTextBox.Enabled = canUseVaultContent;
+        _entryTypeFilterComboBox.Enabled = canUseVaultContent;
+        _tagFilterComboBox.Enabled = canUseVaultContent;
+        _specialFilterComboBox.Enabled = canUseVaultContent;
+        _resetFiltersButton.Enabled = canUseVaultContent;
         _groupTreeView.Enabled = canUseVaultContent;
         _entryListView.Enabled = canUseVaultContent;
         _detailsPanel.Enabled = canUseVaultContent;
@@ -1749,6 +2051,36 @@ public sealed class MainForm : Form
 
         SetStatus("Tresor ist gesperrt. Bitte zuerst entsperren.");
         return false;
+    }
+
+    private sealed class EntryTypeFilterItem
+    {
+        public EntryTypeFilterItem(string text, EntryType? entryType)
+        {
+            Text = text;
+            EntryType = entryType;
+        }
+
+        public string Text { get; }
+
+        public EntryType? EntryType { get; }
+
+        public override string ToString() => Text;
+    }
+
+    private sealed class SpecialFilterItem
+    {
+        public SpecialFilterItem(string text, EntrySpecialFilter filter)
+        {
+            Text = text;
+            Filter = filter;
+        }
+
+        public string Text { get; }
+
+        public EntrySpecialFilter Filter { get; }
+
+        public override string ToString() => Text;
     }
 
     private void ShowPasswordGenerator()
