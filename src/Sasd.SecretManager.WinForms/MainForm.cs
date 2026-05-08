@@ -947,7 +947,22 @@ public sealed class MainForm : Form
             return;
         }
 
-        var newEntry = _mutationService.CreateEntry(_currentVault, dialog.ResultModel);
+        SecretEntry newEntry;
+        try
+        {
+            // DSM-003:
+            // Die finale fachliche Validierung liegt bewusst im Application-
+            // Service. Der Dialog prüft nur Syntax. Hier werden zusätzlich
+            // tresorabhängige Regeln wie doppelte Titel und unbekannte Gruppen
+            // behandelt.
+            newEntry = _mutationService.CreateEntry(_currentVault, dialog.ResultModel);
+        }
+        catch (EntryValidationException exception)
+        {
+            ShowValidationError(exception);
+            return;
+        }
+
         DevLog.WriteLine($"Neuer Eintrag erstellt: {newEntry.Title}");
         MarkDirty();
         SelectGroupPath(dialog.ResultModel.SelectedGroupPath);
@@ -976,7 +991,21 @@ public sealed class MainForm : Form
             return;
         }
 
-        var changed = _mutationService.UpdateEntry(_currentVault, entry, dialog.ResultModel);
+        bool changed;
+        try
+        {
+            // DSM-003:
+            // Auch beim Bearbeiten muss die Application-Schicht die endgültige
+            // Entscheidung treffen, weil sich z. B. durch Gruppenwechsel ein
+            // doppelter Titel innerhalb der Zielgruppe ergeben kann.
+            changed = _mutationService.UpdateEntry(_currentVault, entry, dialog.ResultModel);
+        }
+        catch (EntryValidationException exception)
+        {
+            ShowValidationError(exception);
+            return;
+        }
+
         if (!changed)
         {
             DevLog.WriteLine($"Bearbeiten beendet ohne Änderung: {entry.Title}");
@@ -1746,6 +1775,29 @@ public sealed class MainForm : Form
     {
         DevLog.WriteLine(message);
         MessageBox.Show(this, message, "SASD Secret Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void ShowValidationError(EntryValidationException exception)
+    {
+        // DSM-003:
+        // Validierungsfehler sind erwartbare Benutzerfehler und keine technischen
+        // Abstürze. Deshalb zeigen wir sie als Warnung und loggen nur eine kurze
+        // Info-Meldung, statt einen Fehlerdialog mit Stacktrace-Kontext zu bauen.
+        DevLog.Info("Eintrag konnte wegen Validierungsfehlern nicht gespeichert werden.");
+
+        var message = "Der Eintrag konnte nicht gespeichert werden:"
+            + Environment.NewLine
+            + Environment.NewLine
+            + string.Join(
+                Environment.NewLine,
+                exception.Issues.Select(issue => "• " + issue.Message));
+
+        MessageBox.Show(
+            this,
+            message,
+            "SASD Secret Manager",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
     }
 
     private void ShowError(string message, Exception exception)

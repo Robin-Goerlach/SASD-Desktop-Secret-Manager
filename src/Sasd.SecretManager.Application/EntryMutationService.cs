@@ -1,22 +1,44 @@
 using Sasd.SecretManager.Domain;
 
-// ============================================================================
-// Dateiüberblick:
-// Erzeugt und aktualisiert Einträge im In-Memory-Tresor. Die Klasse kapselt Normalisierung, Tag-Verarbeitung und das Parsen freier Zusatzfelder.
-// Diese Kommentarfassung ergänzt den bestehenden Quellcode um zusätzliche
-// Orientierungshinweise, ohne die fachliche Logik zu verändern.
-// ============================================================================
-
 namespace Sasd.SecretManager.Application;
 
 /// <summary>
-/// Zuständig für das Erzeugen und Aktualisieren von Einträgen im laufenden In-Memory-Tresor.
-/// Persistenz und Verschlüsselung folgen in späteren Meilensteinen.
+/// Zuständig für das Erzeugen und Aktualisieren von Einträgen im laufenden
+/// In-Memory-Tresor.
 /// </summary>
+/// <remarks>
+/// DSM-003 ergänzt eine zentrale fachliche Validierung. Der Service ist damit
+/// nicht mehr darauf angewiesen, dass ausschließlich die WinForms-Oberfläche
+/// korrekt prüft. Auch spätere Importer oder Automatisierungen laufen dadurch
+/// durch dieselben Regeln.
+/// </remarks>
 public sealed class EntryMutationService
 {
+    private readonly EntryValidationService _validationService;
+
     /// <summary>
-    /// Liefert alle vorhandenen Gruppenpfade in stabil sortierter Form für Dialoge und Auswahlfelder.
+    /// Erstellt den Service mit der Standardvalidierung.
+    /// </summary>
+    public EntryMutationService()
+        : this(new EntryValidationService())
+    {
+    }
+
+    /// <summary>
+    /// Erstellt den Service mit explizit übergebener Validierung.
+    /// </summary>
+    /// <remarks>
+    /// Diese Überladung ist vor allem für Tests und spätere Dependency-Injection-
+    /// Szenarien gedacht. Für die aktuelle WinForms-Anwendung reicht der
+    /// parameterlose Konstruktor.
+    /// </remarks>
+    public EntryMutationService(EntryValidationService validationService)
+    {
+        _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
+    }
+
+    /// <summary>
+    /// Liefert alle bekannten Gruppenpfade für Drop-downs und Dialoge.
     /// </summary>
     public IReadOnlyList<string> GetAvailableGroupPaths(SecretVault vault)
     {
@@ -30,15 +52,20 @@ public sealed class EntryMutationService
     }
 
     /// <summary>
-    /// Erzeugt aus dem Bearbeitungsmodell einen neuen Domain-Eintrag und hängt ihn in den Tresor ein.
+    /// Erstellt einen neuen Eintrag aus einem Bearbeitungsmodell und hängt ihn an
+    /// den Tresor an.
     /// </summary>
+    /// <exception cref="EntryValidationException">
+    /// Wird geworfen, wenn Pflichtfelder, Zusatzfelder, Gruppe oder Eindeutigkeit
+    /// nicht gültig sind.
+    /// </exception>
     public SecretEntry CreateEntry(SecretVault vault, EntryEditModel model)
     {
         ArgumentNullException.ThrowIfNull(vault);
         ArgumentNullException.ThrowIfNull(model);
 
-        // Aus dem UI-nahen Bearbeitungsmodell wird hier bewusst wieder ein
-        // fachliches Domain-Objekt aufgebaut.
+        _validationService.ValidateForCreate(vault, model).ThrowIfInvalid();
+
         var entry = new SecretEntry
         {
             Title = model.Title.Trim(),
@@ -53,20 +80,24 @@ public sealed class EntryMutationService
         ApplyTags(entry, model.TagsText);
         ApplyCustomFields(entry, model.CustomFieldsText);
         MergeKnownTags(vault, entry.Tags);
-
         vault.Entries.Add(entry);
         return entry;
     }
 
     /// <summary>
-    /// Aktualisiert einen Eintrag und liefert zurück,
-    /// ob sich fachlich tatsächlich etwas geändert hat.
+    /// Aktualisiert einen Eintrag und liefert zurück, ob sich fachlich tatsächlich
+    /// etwas geändert hat.
     /// </summary>
+    /// <exception cref="EntryValidationException">
+    /// Wird geworfen, wenn die geänderten Daten nicht gespeichert werden dürfen.
+    /// </exception>
     public bool UpdateEntry(SecretVault vault, SecretEntry entry, EntryEditModel model)
     {
         ArgumentNullException.ThrowIfNull(vault);
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(model);
+
+        _validationService.ValidateForUpdate(vault, entry, model).ThrowIfInvalid();
 
         var normalizedTitle = model.Title.Trim();
         var normalizedUserName = model.UserName.Trim();
@@ -75,15 +106,14 @@ public sealed class EntryMutationService
         var normalizedTags = ParseTags(model.TagsText);
         var normalizedCustomFields = ParseCustomFields(model.CustomFieldsText);
 
-        var changed =
-            !string.Equals(entry.Title, normalizedTitle, StringComparison.Ordinal) ||
-            entry.EntryType != model.EntryType ||
-            !string.Equals(entry.UserName, normalizedUserName, StringComparison.Ordinal) ||
-            !string.Equals(entry.Secret, model.Secret, StringComparison.Ordinal) ||
-            !string.Equals(entry.Notes, normalizedNotes, StringComparison.Ordinal) ||
-            entry.GroupId != normalizedGroupId ||
-            !AreTagsEqual(entry.Tags, normalizedTags) ||
-            !AreCustomFieldsEqual(entry.CustomFields, normalizedCustomFields);
+        var changed = !string.Equals(entry.Title, normalizedTitle, StringComparison.Ordinal)
+            || entry.EntryType != model.EntryType
+            || !string.Equals(entry.UserName, normalizedUserName, StringComparison.Ordinal)
+            || !string.Equals(entry.Secret, model.Secret, StringComparison.Ordinal)
+            || !string.Equals(entry.Notes, normalizedNotes, StringComparison.Ordinal)
+            || entry.GroupId != normalizedGroupId
+            || !AreTagsEqual(entry.Tags, normalizedTags)
+            || !AreCustomFieldsEqual(entry.CustomFields, normalizedCustomFields);
 
         if (!changed)
         {
@@ -172,12 +202,17 @@ public sealed class EntryMutationService
             var parts = SplitCustomFieldLine(line);
             if (parts is null)
             {
+                // Ungültige Zeilen werden seit DSM-003 vorher validiert. Diese
+                // Schutzabfrage bleibt dennoch als defensive Sicherung erhalten,
+                // falls der Parser später außerhalb des normalen Speicherwegs
+                // verwendet wird.
                 continue;
             }
 
             var (rawName, value) = parts.Value;
-            var isSecret = rawName.StartsWith('!');
-            var name = rawName.TrimStart('!').Trim();
+            var isSecret = rawName.TrimStart().StartsWith('!');
+            var name = rawName.TrimStart().TrimStart('!').Trim();
+
             if (name.Length == 0)
             {
                 continue;
@@ -191,7 +226,6 @@ public sealed class EntryMutationService
                 Kind = GuessKind(name, value, isSecret),
                 SortOrder = sortOrder,
             });
-
             sortOrder += 10;
         }
 
@@ -223,12 +257,14 @@ public sealed class EntryMutationService
             return CustomFieldKind.Secret;
         }
 
-        if (name.Contains("url", StringComparison.OrdinalIgnoreCase) || value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        if (name.Contains("url", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
         {
             return CustomFieldKind.Url;
         }
 
-        if (name.Contains("host", StringComparison.OrdinalIgnoreCase) || name.Contains("server", StringComparison.OrdinalIgnoreCase))
+        if (name.Contains("host", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("server", StringComparison.OrdinalIgnoreCase))
         {
             return CustomFieldKind.Hostname;
         }
@@ -263,15 +299,14 @@ public sealed class EntryMutationService
             return false;
         }
 
-        // Tags werden bei der Eingabe normalisiert und alphabetisch sortiert.
-        // Für den Vergleich eines unverändert geöffneten und wieder gespeicherten
+        // Tags werden bei der Eingabe normalisiert und alphabetisch sortiert. Für
+        // den Vergleich eines unverändert geöffneten und wieder gespeicherten
         // Eintrags müssen wir daher auch die bereits vorhandenen Tags in dieselbe
-        // Vergleichsform bringen, statt ihre ursprüngliche Reihenfolge als fachlich
-        // relevant zu behandeln.
+        // Vergleichsform bringen, statt ihre ursprüngliche Reihenfolge als
+        // fachlich relevant zu behandeln.
         var normalizedLeft = left
             .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-
         var normalizedRight = right
             .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -299,11 +334,11 @@ public sealed class EntryMutationService
             var leftField = left[index];
             var rightField = right[index];
 
-            if (!string.Equals(leftField.Name, rightField.Name, StringComparison.Ordinal) ||
-                !string.Equals(leftField.Value, rightField.Value, StringComparison.Ordinal) ||
-                leftField.IsSecret != rightField.IsSecret ||
-                leftField.Kind != rightField.Kind ||
-                leftField.SortOrder != rightField.SortOrder)
+            if (!string.Equals(leftField.Name, rightField.Name, StringComparison.Ordinal)
+                || !string.Equals(leftField.Value, rightField.Value, StringComparison.Ordinal)
+                || leftField.IsSecret != rightField.IsSecret
+                || leftField.Kind != rightField.Kind
+                || leftField.SortOrder != rightField.SortOrder)
             {
                 return false;
             }
@@ -329,6 +364,8 @@ public sealed class EntryMutationService
     {
         return string.IsNullOrWhiteSpace(value)
             ? string.Empty
-            : value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", Environment.NewLine, StringComparison.Ordinal).Trim();
+            : value.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace("\n", Environment.NewLine, StringComparison.Ordinal)
+                .Trim();
     }
 }

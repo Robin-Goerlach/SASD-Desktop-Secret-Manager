@@ -17,6 +17,8 @@ namespace Sasd.SecretManager.WinForms;
 /// </summary>
 public sealed class EntryEditDialog : Form
 {
+    private readonly EntryValidationService _validationService = new();
+
     private readonly TextBox _titleTextBox;
     private readonly ComboBox _typeComboBox;
     private readonly TextBox _userNameTextBox;
@@ -274,14 +276,28 @@ public sealed class EntryEditDialog : Form
 
     private void SaveAndClose()
     {
-        if (string.IsNullOrWhiteSpace(_titleTextBox.Text))
+        // DSM-003:
+        // Der Dialog prüft alle rein syntaktischen Eingaberegeln, bevor er sich
+        // schließt. Dadurch verliert der Benutzer seine Eingabe nicht, wenn z. B.
+        // ein Zusatzfeld falsch geschrieben wurde. Tresorabhängige Regeln wie
+        // doppelte Titel prüft danach zusätzlich der Application-Service.
+        var candidateModel = BuildResultModelFromControls();
+        var validationResult = _validationService.ValidateStandalone(candidateModel);
+        if (!validationResult.IsValid)
         {
-            MessageBox.Show(this, "Bitte einen Titel angeben.", "SASD Secret Manager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            _titleTextBox.Focus();
+            ShowValidationWarning(validationResult);
+            FocusFirstInvalidField(validationResult);
             return;
         }
 
-        ResultModel = new EntryEditModel
+        ResultModel = candidateModel;
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+
+    private EntryEditModel BuildResultModelFromControls()
+    {
+        return new EntryEditModel
         {
             Title = _titleTextBox.Text.Trim(),
             EntryType = _typeComboBox.SelectedItem is EntryType entryType ? entryType : EntryType.Login,
@@ -292,9 +308,45 @@ public sealed class EntryEditDialog : Form
             Notes = _notesTextBox.Text,
             CustomFieldsText = _customFieldsTextBox.Text,
         };
+    }
 
-        DialogResult = DialogResult.OK;
-        Close();
+    private void ShowValidationWarning(EntryValidationResult validationResult)
+    {
+        var message = "Der Eintrag kann noch nicht gespeichert werden:"
+            + Environment.NewLine
+            + Environment.NewLine
+            + string.Join(
+                Environment.NewLine,
+                validationResult.Errors.Select(issue => "• " + issue.Message));
+
+        DevLog.Info("Eintragsdialog: Validierung fehlgeschlagen.");
+        MessageBox.Show(
+            this,
+            message,
+            "SASD Secret Manager",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+    }
+
+    private void FocusFirstInvalidField(EntryValidationResult validationResult)
+    {
+        var propertyName = validationResult.Errors.FirstOrDefault()?.PropertyName;
+
+        // C# kann bei einem switch-Ausdruck mit verschiedenen konkreten Control-Typen
+        // (TextBox, ComboBox, ...) ohne Zieltyp keinen gemeinsamen besten Typ bestimmen.
+        // Deshalb geben wir den Zieltyp hier ausdrücklich als Control vor.
+        Control targetControl = propertyName switch
+        {
+            nameof(EntryEditModel.Title) => _titleTextBox,
+            nameof(EntryEditModel.UserName) => _userNameTextBox,
+            nameof(EntryEditModel.Secret) => _secretTextBox,
+            nameof(EntryEditModel.SelectedGroupPath) => _groupComboBox,
+            nameof(EntryEditModel.TagsText) => _tagsTextBox,
+            nameof(EntryEditModel.CustomFieldsText) => _customFieldsTextBox,
+            _ => _titleTextBox,
+        };
+
+        targetControl.Focus();
     }
 
     private static Label CreateLabel(string text)
