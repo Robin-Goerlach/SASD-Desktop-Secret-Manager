@@ -1,10 +1,20 @@
-# ADR-002: `.svault` ist das Primärformat
+# ADR-002: `.svault` ist Primärformat
 
 ## Status
-Angenommen
+
+Akzeptiert
+
+## Kontext
+
+Das Produkt benötigt ein eigenes versionsfähiges Format für strukturierte Secrets, Zusatzfelder, Zertifikate, Metadaten und spätere Migrationen.
 
 ## Entscheidung
-Das projektinterne Tresorformat `.svault` ist das führende Speicherformat.
 
-## Begründung
-Das interne Format muss Versionierung, Migrationsfähigkeit, saubere Verschlüsselung und projektbezogene Erweiterungen erlauben, ohne durch ein Fremdformat künstlich eingeschränkt zu werden.
+`.svault` ist das interne, verschlüsselte Primärformat des Produkts.
+
+## Konsequenzen
+
+- Password Safe bleibt Interop, nicht Primärspeicher.
+- Header, Version, KDF-Parameter und verschlüsselte Nutzlast werden sauber getrennt.
+- Migrationen werden explizit eingeplant.
+- Backups bleiben verschlüsselt.

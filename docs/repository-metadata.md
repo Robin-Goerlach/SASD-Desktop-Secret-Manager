@@ -1,33 +1,58 @@
-# Repository-Metadaten
-
-## Vorgeschlagener Name
-
-`SASD-Desktop-Secret-Manager`
+# Repository-Metadaten und Außendarstellung
 
 ## Kurzbeschreibung für GitHub
 
-Desktop-Secret-Manager in C#/.NET mit WinForms, verschlüsselten Mehrfach-Tresoren, Gruppen, Tags, Passwortgenerator, sicherer Dateiverwaltung und geplanter Password-Safe-Interop. Entwicklungs-Repository für Architektur, Dokumentation und Umsetzung; spätere Release-Stände können getrennt in die SASD-GmbH-Organisation überführt werden, inkl. Tests.
+Lokaler Windows Desktop Secret Manager in C#/.NET 8 mit verschlüsselten `.svault`-Tresoren, strukturierten technischen Secrets, Password-Safe-Interop und geplanter HTTPS/TLS-Zertifikatsverwaltung.
 
-Länge: 348 Zeichen.
+## Längere Beschreibung
 
-## Alternative kürzere Varianten
+SASD Desktop Secret Manager ist ein lokal orientierter Secret Manager für Windows. Das Projekt verwaltet klassische Logins, technische Zugangsdaten, API-Secrets, Datenbank- und Hosting-Zugänge sowie strukturierte Zusatzinformationen in verschlüsselten Tresoren. Das interne Modell bleibt führend; Password Safe wird als Import-/Interop-Schicht betrachtet. Der aktuelle Stand ist ein aktiver Entwicklungsstand und noch kein produktiv freigegebenes Sicherheitsprodukt.
 
-1. `Desktop Secret Manager mit C#/.NET, verschlüsselten Tresoren, Gruppen, Tags, sicherer Dateiverwaltung und geplanter Password-Safe-Interop.`
-2. `Lokaler C#-Desktop-Secret-Manager mit Mehrfach-Tresoren, Gruppen, Tags, Passwortgenerator und geplanter Password-Safe-Kompatibilität.`
+## Empfohlene Topics
 
-## Mögliche Topics
+```text
+csharp
+dotnet
+winforms
+password-manager
+secret-manager
+credential-management
+local-first
+offline-first
+security
+encryption
+vault
+password-safe
+keepass-alternative
+desktop-app
+sasd
+```
 
-- csharp
-- dotnet
-- winforms
-- password-manager
-- secret-manager
-- cryptography
-- desktop-app
-- security
-- passwordsafe
-- sasd
+Nach Aufnahme der Zertifikatsfunktionen zusätzlich:
 
-## Hinweis
+```text
+certificate-management
+tls-certificates
+pki
+```
 
-Da das Projekt zunächst unter dem persönlichen Account laufen soll, ist ein klarer Hinweis sinnvoll, dass dies das **aktive Entwicklungs-Repository** ist und spätere Release-Stände separat in ein SASD-GmbH-Repository übernommen werden können.
+## Website / Projektlink
+
+Solange keine stabile Produktseite existiert, sollte kein Marketing-Link gesetzt werden. Später kann eine SASD-GmbH-Projektseite ergänzt werden.
+
+## README-Schwerpunkte
+
+Die README-Datei sollte folgende Punkte sichtbar machen:
+
+- lokaler Desktop Secret Manager, nicht Cloud-Dienst,
+- aktueller Entwicklungsstatus,
+- Build/Test-Anleitung,
+- Sicherheitswarnung,
+- Dokumentationslinks,
+- V1-Roadmap,
+- klare Nicht-Ziele,
+- Lizenz.
+
+## Warnhinweis für frühe Nutzer
+
+> Dieses Projekt ist sicherheitskritisch und noch in Entwicklung. Es sollte nicht als alleiniger produktiver Speicher für echte Geheimnisse verwendet werden, solange V1-Security-Gates, Testkatalog und Release-Härtung nicht abgeschlossen sind.

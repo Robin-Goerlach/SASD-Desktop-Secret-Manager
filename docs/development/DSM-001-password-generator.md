@@ -2,24 +2,26 @@
 
 ## Ziel
 
-Dieser Milestone ersetzt den bisherigen Platzhalter „Passwortgenerator“ durch eine erste nutzbare V1-Funktion.
+Ein integrierter Passwortgenerator erzeugt starke Passwörter für neue oder bestehende Einträge.
 
-## Umgesetzte Punkte
+## V1-Umfang
 
-- Neuer `PasswordGeneratorService` in der Application-Schicht.
-- Kryptographisch sicherer Zufall über `RandomNumberGenerator`.
-- Optionen für Länge, Großbuchstaben, Kleinbuchstaben, Ziffern und Sonderzeichen.
-- Option zum Vermeiden verwechselbarer Zeichen.
-- Option, aus jeder gewählten Zeichengruppe mindestens ein Zeichen zu erzwingen.
-- WinForms-Dialog zum Generieren, Kopieren und Übernehmen eines Passworts.
-- Integration in den Eintragsdialog: generiertes Passwort kann direkt in das Secret-Feld übernommen werden.
-- Unit-Tests für Kernverhalten.
+- Generator-Dialog aus Eintragsdialog aufrufbar.
+- Länge konfigurierbar.
+- Zeichengruppen wählbar: Großbuchstaben, Kleinbuchstaben, Zahlen, Sonderzeichen.
+- Mindestlänge und sichere Defaults.
+- Ergebnis kann in Secret-Feld übernommen werden.
+- Keine automatische Speicherung ohne Nutzerbestätigung.
 
-## Bewusst noch nicht enthalten
+## Später
 
-- Globale Clipboard-Auto-Clear-Integration im Generator-Dialog.
-- Passwort-Historie.
-- Generatorprofile pro Gruppe oder Eintragstyp.
-- Passphrase-/Wortlistenmodus.
+- Generatorprofile je Kontext.
+- Eintragsvorlagen mit Generatorvorgaben.
+- Ausschluss leicht verwechselbarer Zeichen.
 
-Diese Punkte passen besser in spätere Milestones.
+## Tests
+
+- Erzeugte Passwörter erfüllen gewählte Regeln.
+- Keine leeren oder zu kurzen Ergebnisse.
+- Generator nutzt kryptografisch geeignete Zufallsquelle.
+- UI übernimmt Passwort nur nach bewusster Aktion.

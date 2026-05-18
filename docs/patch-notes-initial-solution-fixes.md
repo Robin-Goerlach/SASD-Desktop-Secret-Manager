@@ -1,9 +1,11 @@
 # Patch Notes – Initial Solution Fixes
 
-Diese kleine Korrekturrunde behebt drei Startprobleme des ersten ZIP-Pakets:
+Dieses Dokument bleibt als historische Notiz für frühe Solution- und Projektstruktur-Korrekturen erhalten.
 
-1. In den Testdateien wurde `using Xunit;` ergänzt, damit `[Fact]` und `Assert` aufgelöst werden.
-2. In `Program.cs` wird `System.Windows.Forms.Application.Run(...)` nun voll qualifiziert verwendet, um eine Kollision mit dem Namespace `Sasd.SecretManager.Application` zu vermeiden.
-3. In `MainForm.cs` wurde die TreeView-Auswahl null-sicher formuliert, damit die Nullability-Warnung verschwindet.
+## Einordnung
 
-Danach sollten `dotnet build` und `dotnet test` auf einem Rechner mit .NET SDK 8.0.420 deutlich sauberer durchlaufen.
+Die aktuelle Dokumentationsbasis wurde am 2026-05-18 erheblich fortgeschrieben. Für neue Entwicklung sind insbesondere Roadmap, Featuremap, Security-/Threat-Model und Test-/Abnahmekatalog führend.
+
+## Weiterverwendung
+
+Dieses Dokument sollte nicht als aktuelle Architektur- oder Release-Quelle verwendet werden. Es kann im Repository bleiben, sofern frühe Reparaturen und Setup-Schritte nachvollziehbar bleiben sollen. Bei einer späteren Release-Bereinigung kann es in ein Archiv verschoben oder gelöscht werden.
